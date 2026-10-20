@@ -9,7 +9,8 @@ from utils.content import load_all
 SECTIONS = ["Start Here", "Learning Paths", "Intel Product Explorer", "Software Stack Explorer", "Practical Labs",
             "Customer POC Simulator", "Performance Playground", "Troubleshooting Clinic", "Senior TPM Toolkit",
             "My Progress", "Glossary and Sources", "Model Functional Testing", "Model Performance Testing",
-            "Agentic AI Inference Lab", "Golden Master Cheatsheet"]
+            "Agentic AI Inference Lab", "Golden Master Cheatsheet",
+            "Senior TPM Concepts & Inference Math"]
 C = load_all()
 
 
@@ -230,3 +231,12 @@ def test_cheatsheet_filters_and_card_view():
     at.radio(key="gm_view").set_value("Step cards").run()
     assert not at.exception
     assert any("TTFT" in e.label for e in at.expander)
+
+
+def test_concepts_math_two_tables_and_filters():
+    at = nav(app(), "Senior TPM Concepts & Inference Math")
+    assert sum("class='cmt'" in m.value for m in at.markdown) == 2
+    at.text_input(key="cm_q2").set_value("percentile").run()
+    assert not at.exception
+    tables = [m.value for m in at.markdown if "class='cmt'" in m.value]
+    assert "M18" in tables[1] and "M03" not in tables[1]

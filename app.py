@@ -12,6 +12,7 @@ st.set_page_config(page_title="Intel AI/ML Technical TPM Academy", page_icon="�
 from modules import explorers, labs_page, learning_paths, performance, simulators, start_here, toolkit  # noqa: E402
 from modules import agent_lab_page, model_testing  # noqa: E402
 from modules import cheatsheet  # noqa: E402
+from modules import concepts_math  # noqa: E402
 from modules.ui import content, goto, progress  # noqa: E402
 from utils.search import search  # noqa: E402
 
@@ -31,6 +32,7 @@ SECTIONS = {
     "Model Performance Testing": ("⏱️", model_testing.render_performance),
     "Agentic AI Inference Lab": ("🤖", agent_lab_page.render),
     "Golden Master Cheatsheet": ("🧾", cheatsheet.render),
+    "Senior TPM Concepts & Inference Math": ("🎓", concepts_math.render),
 }
 
 st.markdown(

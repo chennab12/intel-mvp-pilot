@@ -197,3 +197,20 @@ Model facts come from the model card and `config.json`. B70 facts come from Inte
 Every command is illustrative: the app never runs it. Computed numbers are arithmetic upper bounds, not measurements. The content lives in `content/cheatsheet.yaml`. The tests in `tests/test_cheatsheet.py` recompute every number quoted in the text.
 
 ![Golden Master Cheatsheet](screenshots/golden-master-cheatsheet.png)
+
+## Senior TPM Concepts & Inference Math (added section)
+
+**🎓 Senior TPM Concepts & Inference Math** is the 16th section in the sidebar. Nothing in the earlier sections changed.
+
+The section has two cheatsheet tables. Both can be filtered and downloaded as Markdown or CSV.
+
+1. **Prerequisite concepts.** 38 concepts a senior, technically focused AI/ML TPM needs, in learning order:
+   - Areas: hardware, software stack, numerics, model, inference, serving and ops, evaluation and stats, economics, applications, and program leadership.
+   - Each concept has a level (🟢 foundation, 🟡 working TPM or 🔴 senior TPM), a plain-words explanation, why a TPM needs it, key numbers, its prerequisites, and where to practise it in the app.
+2. **Inference math.** 24 steps for `Qwen/Qwen2.5-0.5B-Instruct` on vLLM: setup → functional → performance → business.
+   - Steps include memory sizing, KV blocks and concurrency, the roofline, prefill vs decode, Little's law, percentiles, confidence intervals, and goodput, cost and energy.
+   - Each step has what happens behind the scenes, the formula, a worked example, the metric, assumptions, dependencies, why the step is needed, an annotation, and sources.
+
+The worked numbers are computed from public specs or stated assumptions. They are upper bounds, not measurements. The content lives in `content/concepts_math.yaml`. The tests in `tests/test_concepts_math.py` recompute every number quoted and check that each concept's prerequisites appear before it.
+
+![Senior TPM Concepts & Inference Math](screenshots/concepts-inference-math.png)

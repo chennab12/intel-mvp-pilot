@@ -1,0 +1,481 @@
+# Senior TPM Concepts & Inference Math.
+# Table 1 (concepts): prerequisite concepts on the way to a senior, technically focused AI/ML TPM.
+# Table 2 (math): the math, statistics and formulas behind a functional + performance test of
+#   Qwen/Qwen2.5-0.5B-Instruct served with vLLM, with what happens behind the scenes.
+# Worked numbers are COMPUTED from the model card / config.json and the Arc Pro B70 spec, or from a stated
+# ASSUMPTION. They are not measurements. tests/test_concepts_math.py recomputes every number quoted here.
+
+levels:
+  foundation: {icon: "🟢", name: "Foundation"}
+  working: {icon: "🟡", name: "Working TPM"}
+  senior: {icon: "🔴", name: "Senior TPM"}
+
+concepts:
+  # ---------------- hardware ----------------
+  - {id: C01, area: "🖥️ Hardware", concept: "CPU vs GPU vs AI accelerator", level: foundation,
+     plain: "A CPU has a few powerful cores for general work; a GPU or accelerator has thousands of simple lanes that do the same matrix math in parallel.",
+     why_tpm: "Every POC starts with 'which device, and why this one?'. You must explain the trade-off without hand-waving.",
+     numbers: "Arc Pro B70: 32 Xe-cores, 256 XMX engines (Intel ARK)",
+     depends_on: [], practise: "Intel Product Explorer", links: [ark-arc-pro-b70]}
+  - {id: C02, area: "🖥️ Hardware", concept: "Memory hierarchy and capacity", level: foundation,
+     plain: "Data lives in registers → caches → device memory (VRAM/HBM) → host RAM → disk. Each step down is bigger and slower.",
+     why_tpm: "'Does it fit?' is the first question of every LLM deployment. Capacity decides model size and concurrency.",
+     numbers: "B70: 32 GB GDDR6 · Qwen2.5-0.5B BF16 weights ≈ 0.98 GB",
+     depends_on: [C01], practise: "Performance Playground", links: [ark-arc-pro-b70, qwen-model-card]}
+  - {id: C03, area: "🖥️ Hardware", concept: "Memory bandwidth vs compute (FLOPS)", level: working,
+     plain: "Bandwidth is how fast data can be fed in; FLOPS is how fast the math happens. The slower of the two sets your speed.",
+     why_tpm: "LLM decode is usually bandwidth-bound, so a spec sheet's FLOPS number alone predicts nothing about tokens/s.",
+     numbers: "B70: 608 GB/s · decode ceiling ≈ bandwidth ÷ bytes read per token",
+     depends_on: [C02], practise: "Practical Labs", links: [ark-arc-pro-b70]}
+  - {id: C04, area: "🖥️ Hardware", concept: "Roofline and arithmetic intensity", level: senior,
+     plain: "Arithmetic intensity = math done per byte moved. Low intensity → limited by memory; high intensity → limited by compute.",
+     why_tpm: "Lets you predict which optimisation (batching, quantization, faster memory) will actually help before anyone spends a week on it.",
+     numbers: "Decode at batch 1 ≈ 1 FLOP/byte (BF16); grows ≈ linearly with batch size",
+     depends_on: [C03], practise: "Golden Master Cheatsheet", links: [arxiv-attention]}
+  - {id: C05, area: "🖥️ Hardware", concept: "Scale-up vs scale-out interconnect", level: senior,
+     plain: "Scale-up links GPUs inside one box (PCIe or faster links); scale-out links boxes over the network. Both add communication time.",
+     why_tpm: "Multi-device plans fail on communication, not compute. You need to ask where the all-reduce traffic goes.",
+     numbers: "B70: PCIe 5.0 x16 (Intel ARK) · speedup = 1 ÷ ((1−c)/n + c)",
+     depends_on: [C03], practise: "Practical Labs", links: [ark-arc-pro-b70]}
+
+  # ---------------- software stack ----------------
+  - {id: C06, area: "🧱 Software stack", concept: "Driver → runtime → framework → server → app", level: foundation,
+     plain: "A stack of layers, each built for specific versions of the layer below. One wrong version breaks everything above it.",
+     why_tpm: "Version mismatch is the #1 bring-up blocker. You own the compatibility matrix and the upgrade plan.",
+     numbers: "Pin: driver, Level Zero, torch (XPU), vLLM / LLM-Scaler container tag",
+     depends_on: [], practise: "Software Stack Explorer", links: [pytorch-xpu-get-started, llm-scaler-vllm-readme]}
+  - {id: C07, area: "🧱 Software stack", concept: "Containers and reproducible environments", level: working,
+     plain: "A container packages the exact software versions so the same test runs the same way on another machine.",
+     why_tpm: "Turns 'works on my machine' into a pinned tag you can hand to a customer and to support.",
+     numbers: "LLM-Scaler docs: use an exact release tag, not 'latest'",
+     depends_on: [C06], practise: "Software Stack Explorer", links: [llm-scaler-vllm-readme, docker-container]}
+  - {id: C08, area: "🧱 Software stack", concept: "Support matrix vs roadmap vs announcement", level: senior,
+     plain: "Supported = tested and documented now. Roadmap = planned. Announced = exists, but details may change.",
+     why_tpm: "Customers commit money on what you say. Never present a roadmap item as a supported combination.",
+     numbers: "Every product claim needs a source and a check date",
+     depends_on: [C06], practise: "Glossary and Sources", links: [gaudi-support-matrix]}
+
+  # ---------------- numerics ----------------
+  - {id: C09, area: "🔢 Numerics", concept: "Number formats: FP32, BF16, FP16, FP8, INT8, INT4", level: foundation,
+     plain: "Fewer bits per number = less memory and faster math, but less precision.",
+     why_tpm: "Precision choices change memory, speed and accuracy at once. You must make sure all three are measured together.",
+     numbers: "Bytes/param: FP32 4 · BF16/FP16 2 · FP8/INT8 1 · INT4 0.5",
+     depends_on: [], practise: "Performance Playground", links: [qwen-config]}
+  - {id: C10, area: "🔢 Numerics", concept: "Quantization and its accuracy cost", level: working,
+     plain: "Store weights in fewer bits using a scale factor; rounding adds small errors that can add up.",
+     why_tpm: "'2x faster' is only a win if accuracy stays inside the agreed tolerance. You define that tolerance up front.",
+     numbers: "INT8 scale = max|w| ÷ 127 · max rounding error = scale ÷ 2",
+     depends_on: [C09], practise: "Practical Labs", links: [llm-scaler-vllm-readme]}
+  - {id: C11, area: "🔢 Numerics", concept: "Floating-point non-determinism", level: senior,
+     plain: "Adding the same numbers in a different order gives slightly different results, so devices can disagree in the last digits.",
+     why_tpm: "Explains why CPU and GPU outputs differ and why 'bit-exact' is the wrong acceptance criterion.",
+     numbers: "BF16 relative precision ≈ 2⁻⁸ ≈ 0.39% · FP16 ≈ 2⁻¹¹ ≈ 0.05%",
+     depends_on: [C09], practise: "Model Functional Testing", links: []}
+
+  # ---------------- model ----------------
+  - {id: C12, area: "🧠 Model", concept: "Tokens and tokenizers", level: foundation,
+     plain: "Text is split into tokens (word pieces). Models read, bill and limit everything in tokens, not words.",
+     why_tpm: "Every cost, limit and latency number is per token. Convert customer words to tokens before sizing anything.",
+     numbers: "Qwen2.5 vocab 151,936 · English ≈ 1.3 tokens/word (rule of thumb)",
+     depends_on: [], practise: "Learning Paths", links: [qwen-config]}
+  - {id: C13, area: "🧠 Model", concept: "Transformer and attention", level: foundation,
+     plain: "Each layer lets every token look at earlier tokens (attention) and then transforms it (MLP). Stack many layers.",
+     why_tpm: "Attention cost grows with context length, which is why long prompts are slow and memory-hungry.",
+     numbers: "Qwen2.5-0.5B: 24 layers, hidden 896, 14 attention heads",
+     depends_on: [C12], practise: "Learning Paths", links: [arxiv-attention, qwen-config]}
+  - {id: C14, area: "🧠 Model", concept: "Parameters and model size", level: foundation,
+     plain: "Parameters are the learned numbers. More parameters usually means more capable, but bigger and slower.",
+     why_tpm: "Weight memory = parameters × bytes per parameter. This is the first line of every sizing sheet.",
+     numbers: "0.49 B params × 2 bytes = 0.98 GB (BF16)",
+     depends_on: [C09], practise: "Performance Playground", links: [qwen-model-card]}
+  - {id: C15, area: "🧠 Model", concept: "GQA: grouped-query attention", level: working,
+     plain: "Several query heads share one key/value head, so the model stores far less per token.",
+     why_tpm: "Explains why two models of the same size can need very different KV-cache memory.",
+     numbers: "Qwen2.5-0.5B: 14 Q heads share 2 KV heads → 7x smaller KV cache than full multi-head",
+     depends_on: [C13], practise: "Performance Playground", links: [qwen-config]}
+  - {id: C16, area: "🧠 Model", concept: "Context window and generation limit", level: foundation,
+     plain: "The maximum number of tokens the model can look at (input + output) in one request.",
+     why_tpm: "Customer documents must fit the window, or you need chunking or RAG. Longer context costs memory.",
+     numbers: "Qwen2.5-0.5B: 32,768 context · 8,192 generation",
+     depends_on: [C12], practise: "Golden Master Cheatsheet", links: [qwen-model-card]}
+  - {id: C17, area: "🧠 Model", concept: "Base vs instruct models and chat templates", level: working,
+     plain: "Instruct models are tuned to follow instructions and expect a specific chat format around the messages.",
+     why_tpm: "A wrong or missing chat template silently ruins answers and makes a good model look broken in a POC.",
+     numbers: "Use tokenizer.apply_chat_template / the server's chat endpoint",
+     depends_on: [C12], practise: "Golden Master Cheatsheet", links: [qwen-model-card]}
+
+  # ---------------- inference ----------------
+  - {id: C18, area: "⚙️ Inference", concept: "Prefill vs decode", level: foundation,
+     plain: "Prefill reads the whole prompt at once (lots of math). Decode then writes one token at a time (lots of memory reads).",
+     why_tpm: "They stress different hardware. TTFT is mostly prefill; tokens/s is mostly decode.",
+     numbers: "Prefill ≈ compute-bound · decode ≈ bandwidth-bound",
+     depends_on: [C03, C13], practise: "Practical Labs", links: [vllm-bench-cli]}
+  - {id: C19, area: "⚙️ Inference", concept: "KV cache", level: foundation,
+     plain: "Saved keys and values of past tokens, so the model doesn't recompute them for every new token.",
+     why_tpm: "The KV cache, not the weights, usually decides how many users fit at once.",
+     numbers: "Qwen2.5-0.5B: 12 KiB per token · 0.40 GB per 32K-token sequence",
+     depends_on: [C15, C18], practise: "Performance Playground", links: [arxiv-pagedattention, qwen-config]}
+  - {id: C20, area: "⚙️ Inference", concept: "Batching and continuous batching", level: working,
+     plain: "Serve many requests in the same step so each weight read is shared. Continuous batching adds new requests every step.",
+     why_tpm: "This is where throughput comes from, and it trades against per-user latency.",
+     numbers: "Batch 32 at 1K context on B70: ≈ 14,071 tok/s aggregate ceiling vs ≈ 613 at batch 1 (computed)",
+     depends_on: [C18, C19], practise: "Model Performance Testing", links: [arxiv-pagedattention]}
+  - {id: C21, area: "⚙️ Inference", concept: "PagedAttention and KV blocks", level: working,
+     plain: "vLLM stores the KV cache in fixed-size blocks, like memory pages, so little space is wasted and memory can be shared.",
+     why_tpm: "Explains vLLM's 'max concurrency' log line and why block size and gpu-memory-utilization matter.",
+     numbers: "Block = block_size × 12 KiB · waste ≤ 1 block per sequence",
+     depends_on: [C19], practise: "Golden Master Cheatsheet", links: [arxiv-pagedattention, vllm-engine-args]}
+  - {id: C22, area: "⚙️ Inference", concept: "Prefix caching", level: senior,
+     plain: "If many requests start with the same text (a system prompt), compute it once and reuse its KV cache.",
+     why_tpm: "Can cut TTFT and cost a lot for agents and chat apps. Ask whether it's on and whether the workload benefits.",
+     numbers: "Saves ≈ 2 × params × shared tokens FLOPs per request",
+     depends_on: [C21], practise: "Agentic AI Inference Lab", links: [vllm-engine-args, llm-scaler-vllm-readme]}
+  - {id: C23, area: "⚙️ Inference", concept: "Tensor and pipeline parallelism", level: senior,
+     plain: "Split one model across devices: by slicing each layer (tensor) or by giving each device a group of layers (pipeline).",
+     why_tpm: "Needed only when the model or its KV cache doesn't fit, or latency demands it; it always adds communication.",
+     numbers: "Qwen2.5-0.5B fits on one device → TP = 1",
+     depends_on: [C05, C19], practise: "Practical Labs", links: [vllm-engine-args]}
+  - {id: C24, area: "⚙️ Inference", concept: "Sampling: greedy, temperature, top-p", level: working,
+     plain: "How the next token is chosen: always the most likely (greedy) or randomly with controlled spread.",
+     why_tpm: "Functional tests need temperature 0; product demos often use sampling. Mixing them invalidates comparisons.",
+     numbers: "temperature = 0 → greedy → deterministic on one device",
+     depends_on: [C12], practise: "Model Functional Testing", links: []}
+
+  # ---------------- serving and operations ----------------
+  - {id: C25, area: "🚀 Serving & ops", concept: "OpenAI-compatible serving API", level: foundation,
+     plain: "A standard HTTP interface (/v1/chat/completions) so apps can switch models and servers without rewrites.",
+     why_tpm: "The contract between the customer's app and your stack. API checks are functional tests too.",
+     numbers: "usage.total_tokens = prompt + completion",
+     depends_on: [C12], practise: "Model Functional Testing", links: [qwen-model-card]}
+  - {id: C26, area: "🚀 Serving & ops", concept: "SLOs, percentiles and tail latency", level: working,
+     plain: "A target that most requests must meet (for example P95 TTFT ≤ 500 ms). Averages hide the slow ones.",
+     why_tpm: "POC exit criteria should be SLOs at a stated load, written down before testing starts.",
+     numbers: "Goodput = share of requests meeting every SLO",
+     depends_on: [C18], practise: "Model Performance Testing", links: [vllm-bench-cli]}
+  - {id: C27, area: "🚀 Serving & ops", concept: "Observability: logs, metrics, traces", level: working,
+     plain: "Record what happened (logs), how much (metrics) and where time went (traces).",
+     why_tpm: "Without telemetry, every escalation is a guess. Make it part of the POC plan.",
+     numbers: "Track: TTFT, TPOT, queue time, KV usage %, errors/s, device utilisation, power",
+     depends_on: [C26], practise: "Troubleshooting Clinic", links: [llm-scaler-vllm-readme]}
+
+  # ---------------- evaluation and statistics ----------------
+  - {id: C28, area: "📊 Evaluation & stats", concept: "Accuracy metrics and eval sets", level: foundation,
+     plain: "Score the model on a fixed set of questions with known answers.",
+     why_tpm: "'Is it still good?' must be a number on a versioned dataset, not a demo impression.",
+     numbers: "accuracy = correct ÷ total",
+     depends_on: [], practise: "Model Functional Testing", links: []}
+  - {id: C29, area: "📊 Evaluation & stats", concept: "Perplexity", level: working,
+     plain: "How surprised the model is by real text. Lower is better.",
+     why_tpm: "A cheap, automatic regression signal after a precision or kernel change.",
+     numbers: "PPL = exp(mean negative log-likelihood)",
+     depends_on: [C28], practise: "Golden Master Cheatsheet", links: []}
+  - {id: C30, area: "📊 Evaluation & stats", concept: "Sampling error and confidence intervals", level: senior,
+     plain: "A score from a small test set is noisy. The confidence interval says how much it could move by chance.",
+     why_tpm: "Stops teams claiming a 2-point 'regression' that is really just noise.",
+     numbers: "SE = √(p(1−p)/n) · 95% CI ≈ ±1.96·SE · n = 200, p = 0.8 → ±5.5 pts",
+     depends_on: [C28], practise: "Golden Master Cheatsheet", links: []}
+  - {id: C31, area: "📊 Evaluation & stats", concept: "Benchmark fairness (apples to apples)", level: working,
+     plain: "Compare only runs with the same model, precision, lengths, load and settings.",
+     why_tpm: "Unfair comparisons destroy trust with customers and leadership. You police the method.",
+     numbers: "Same: model, dtype, input/output lengths, concurrency, versions",
+     depends_on: [C26], practise: "Performance Playground", links: [vllm-bench-cli]}
+  - {id: C32, area: "📊 Evaluation & stats", concept: "Little's law and queueing", level: senior,
+     plain: "Requests in flight = arrival rate × time each spends in the system. Past capacity, the queue only grows.",
+     why_tpm: "Turns 'how many users?' into concurrency you can actually test, and explains latency cliffs.",
+     numbers: "L = λ × W · 10 req/s × 1.375 s = 13.75 in flight",
+     depends_on: [C26], practise: "Model Performance Testing", links: []}
+
+  # ---------------- economics ----------------
+  - {id: C33, area: "💰 Economics", concept: "Cost per million tokens and TCO", level: working,
+     plain: "Turn hourly cost and measured speed into the price of output, then add power, space and people (total cost of ownership).",
+     why_tpm: "Customers buy on $/token and perf/W, not on peak specs.",
+     numbers: "$/1M = $/h ÷ (tok/s × 3600) × 10⁶ · J/token = W ÷ tok/s",
+     depends_on: [C20], practise: "Performance Playground", links: [ark-arc-pro-b70]}
+
+  # ---------------- applications ----------------
+  - {id: C34, area: "🤖 Applications", concept: "RAG (retrieval-augmented generation)", level: working,
+     plain: "Look up relevant documents and paste them into the prompt so the model answers from real data.",
+     why_tpm: "The most common enterprise pattern. It makes prompts long, so TTFT and KV memory grow.",
+     numbers: "Prompt tokens = question + retrieved chunks (often 1-4K)",
+     depends_on: [C16, C18], practise: "Learning Paths", links: []}
+  - {id: C35, area: "🤖 Applications", concept: "Agents and tool calling", level: senior,
+     plain: "The model calls tools in a loop until it can answer. Each loop is another inference call.",
+     why_tpm: "Agents multiply latency, tokens and cost, and need guardrails and evals. Size for calls per task, not requests.",
+     numbers: "Cost per task = Σ calls × tokens per call · context grows every step",
+     depends_on: [C22, C25], practise: "Agentic AI Inference Lab", links: []}
+
+  # ---------------- program ----------------
+  - {id: C36, area: "🧭 Program leadership", concept: "POC exit criteria and evidence", level: working,
+     plain: "Agree in writing what 'success' means: functional, performance and cost targets, and how each is measured.",
+     why_tpm: "Prevents moving goalposts and gives a clear go/no-go decision.",
+     numbers: "Functional gate → performance gate → cost gate, each with an owner",
+     depends_on: [C26, C28], practise: "Customer POC Simulator", links: []}
+  - {id: C37, area: "🧭 Program leadership", concept: "Hardware limit or software gap?", level: senior,
+     plain: "Decide from evidence whether a problem is physics (capacity, bandwidth) or software (kernel, driver, config).",
+     why_tpm: "The core triage call for a Customer Engineering TPM. It decides who fixes it and how long it takes.",
+     numbers: "Compare measured vs ceiling: far below the ceiling → likely software",
+     depends_on: [C04, C06], practise: "Troubleshooting Clinic", links: []}
+  - {id: C38, area: "🧭 Program leadership", concept: "Risk, dependencies and the critical path", level: working,
+     plain: "Find the chain of dependent tasks that sets the end date, and the risks that could stretch it.",
+     why_tpm: "Driver releases, container builds and customer access are classic critical-path items.",
+     numbers: "Critical path = longest dependency chain",
+     depends_on: [], practise: "Senior TPM Toolkit", links: []}
+
+# ---------------- Table 2: inference math for Qwen2.5-0.5B-Instruct on vLLM ----------------
+math:
+  - {id: M01, stage: "🧰 Setup", icon: "🔤", step: "Tokenize the request",
+     behind: "The tokenizer splits text into sub-word pieces from a 151,936-entry vocabulary and wraps it in the chat template. The model never sees words, only token ids.",
+     formula: "tokens ≈ words × 1.3 (English rule of thumb)",
+     example: "1,000-word prompt ≈ 1,300 tokens",
+     metric: "prompt_tokens (from usage)",
+     assumptions: "≈ 1.3 tokens per English word; code and other languages differ",
+     dependencies: "Correct tokenizer + chat template for Qwen2.5",
+     why: "Every limit, cost and latency is counted in tokens. Size in tokens, not words.",
+     note: "⚠️ Always read the real count from usage.prompt_tokens",
+     links: [qwen-config]}
+  - {id: M02, stage: "🧰 Setup", icon: "⚖️", step: "Weight memory",
+     behind: "vLLM loads every parameter into device memory once at startup. They stay there for every request.",
+     formula: "W = params × bytes per param",
+     example: "0.49 B × 2 B (BF16) = 0.98 GB · FP8 0.49 GB · INT4 0.25 GB",
+     metric: "GB",
+     assumptions: "BF16 weights as shipped (config torch_dtype bfloat16)",
+     dependencies: "dtype / --quantization choice",
+     why: "It's the fixed cost you pay before serving anyone. What's left is for users.",
+     note: "ℹ️ Tied embeddings: input and output share one matrix",
+     links: [qwen-model-card, qwen-config]}
+  - {id: M03, stage: "🧰 Setup", icon: "🧠", step: "KV cache per token",
+     behind: "For every token, each of the 24 layers saves a key and a value vector for each of the 2 KV heads, so later tokens can attend to it without recomputing.",
+     formula: "KV/token = 2 (K,V) × layers × KV heads × head dim × bytes",
+     example: "2 × 24 × 2 × 64 × 2 B = 12,288 B = 12 KiB · 4K-token sequence ≈ 50 MB · 32K ≈ 0.40 GB",
+     metric: "bytes per token",
+     assumptions: "BF16/FP16 KV cache; head dim = 896 ÷ 14 = 64",
+     dependencies: "Model config (GQA with 2 KV heads)",
+     why: "This, not the weights, decides how many users fit at once.",
+     note: "💡 GQA: 2 KV heads instead of 14 makes this 7x smaller",
+     links: [qwen-config, arxiv-pagedattention]}
+  - {id: M04, stage: "🧰 Setup", icon: "🧮", step: "vLLM memory budget → KV blocks → max concurrency",
+     behind: "At startup vLLM claims a fraction of device memory, loads the weights, profiles peak activations, and splits the rest into fixed-size KV blocks (PagedAttention).",
+     formula: "KV space = mem × util − W − activations · blocks = KV space ÷ (block_size × KV/token) · max seqs ≈ KV tokens ÷ tokens per request",
+     example: "B70: 32 × 0.9 − 0.98 = 27.82 GB → ≈ 2.26 M tokens → ≈ 141,500 blocks of 16 or ≈ 35,375 of 64 → ≈ 552 concurrent 4K-token requests",
+     metric: "KV blocks, max concurrency (vLLM startup log)",
+     assumptions: "util 0.9 (LLM-Scaler examples; vLLM default 0.92); activation memory ignored",
+     dependencies: "--gpu-memory-utilization, --block-size, --max-model-len",
+     why: "Tells you the most users the server can hold before it must queue or preempt.",
+     note: "⚠️ Real numbers are lower: activations, CUDA/XPU graphs and fragmentation take space",
+     links: [vllm-engine-args, llm-scaler-vllm-readme, ark-arc-pro-b70]}
+  - {id: M05, stage: "✅ Functional", icon: "🔁", step: "Determinism with greedy decoding",
+     behind: "At temperature 0 the server always picks the highest-scoring token, so the same prompt on the same setup follows the same path.",
+     formula: "token = argmax(logits) · match rate = identical runs ÷ runs",
+     example: "Send each golden prompt 2x → 100% identical expected on one device",
+     metric: "% identical outputs",
+     assumptions: "Same device, same batch conditions",
+     dependencies: "temperature = 0 (and a fixed seed)",
+     why: "If the same input can give different answers, no later comparison means anything.",
+     note: "⚠️ Different batch sizes or devices can flip near-tie tokens",
+     links: []}
+  - {id: M06, stage: "✅ Functional", icon: "📏", step: "Numerical parity vs a reference",
+     behind: "Lower precision keeps fewer significant bits, and different kernels add in a different order, so logits differ slightly from an FP32 reference.",
+     formula: "cos = a·b ÷ (‖a‖‖b‖) · top-1 agreement · BF16 ε = 2⁻⁸ ≈ 0.39% · FP16 ε = 2⁻¹¹ ≈ 0.05%",
+     example: "Accept if cosine ≥ 0.99 and top-1 agreement ≥ 99% (example tolerance)",
+     metric: "cosine, max |Δ|, top-1 %",
+     assumptions: "Tolerance values are examples; agree real ones with the customer",
+     dependencies: "An FP32 reference run (Transformers on CPU)",
+     why: "Separates normal rounding from real bugs (wrong kernel, bad conversion).",
+     note: "ℹ️ vLLM: SamplingParams(logprobs=5) exposes top-5 logprobs to compare",
+     links: []}
+  - {id: M07, stage: "✅ Functional", icon: "🎯", step: "Accuracy and its confidence interval",
+     behind: "Each eval question is a coin flip with probability p of being right; a finite test set only estimates p.",
+     formula: "acc = correct ÷ n · SE = √(p(1−p) ÷ n) · 95% CI ≈ acc ± 1.96·SE",
+     example: "n = 200, acc = 80% → SE 2.8 pts → 95% CI ±5.5 pts",
+     metric: "accuracy %, CI",
+     assumptions: "Questions independent; same eval set and prompts",
+     dependencies: "Versioned eval set",
+     why: "Stops you from reporting noise as a regression (or missing a real one).",
+     note: "💡 To detect a 2-pt change you need thousands of questions",
+     links: []}
+  - {id: M08, stage: "✅ Functional", icon: "📉", step: "Perplexity",
+     behind: "The model assigns a probability to every real next token; perplexity is the average 'number of choices' it was torn between.",
+     formula: "PPL = exp( −(1/N) Σ log p(xᵢ | x<ᵢ) )",
+     example: "Mean NLL 2.3 nats → PPL ≈ 10",
+     metric: "perplexity (lower = better)",
+     assumptions: "Same text, same tokenizer, same context length",
+     dependencies: "Prompt logprobs (vLLM prompt_logprobs) or HF loss",
+     why: "A fast, automatic signal that a precision or kernel change hurt quality.",
+     note: "⚠️ Only compare PPL across runs with the identical tokenizer",
+     links: []}
+  - {id: M09, stage: "✅ Functional", icon: "🔢", step: "Quantization error",
+     behind: "INT8 stores each weight as an integer times a shared scale; rounding to the nearest step adds a small error.",
+     formula: "scale = max|w| ÷ 127 · |error| ≤ scale ÷ 2",
+     example: "max|w| = 0.5 → scale ≈ 0.0039 → error ≤ 0.002",
+     metric: "Δ accuracy vs BF16 (pts)",
+     assumptions: "Symmetric per-tensor INT8 (real methods are finer-grained)",
+     dependencies: "--quantization (fp8, sym_int4 in LLM-Scaler) or pre-quantized checkpoints",
+     why: "Explains where speed-ups come from and why accuracy must be re-checked.",
+     note: "⚠️ Outlier weights inflate the scale and hurt small values",
+     links: [llm-scaler-vllm-readme]}
+  - {id: M10, stage: "⚡ Performance", icon: "➗", step: "FLOPs per token",
+     behind: "Every parameter is used in one multiply and one add per token.",
+     formula: "FLOPs/token ≈ 2 × params",
+     example: "2 × 0.49 B ≈ 0.98 GFLOP per token",
+     metric: "GFLOP",
+     assumptions: "Ignores the attention term (next row)",
+     dependencies: "Parameter count",
+     why: "Gives the compute side of the speed estimate.",
+     note: "ℹ️ Same order of magnitude as the bytes read, which is why decode is memory-bound",
+     links: [qwen-model-card]}
+  - {id: M11, stage: "⚡ Performance", icon: "👀", step: "Attention cost grows with context",
+     behind: "Each new token compares its query with every earlier key (QKᵀ) and mixes every earlier value, in every layer.",
+     formula: "attention FLOPs/token ≈ 4 × layers × context × hidden",
+     example: "4 × 24 × 4,096 × 896 ≈ 352 MFLOP at 4K context ≈ 36% on top of 0.98 GFLOP",
+     metric: "MFLOP per token",
+     assumptions: "Hidden 896 = 14 heads × 64",
+     dependencies: "Context length",
+     why: "Explains why long prompts make every later token slower too.",
+     note: "💡 Long context hurts both memory (KV) and compute (attention)",
+     links: [arxiv-attention, qwen-config]}
+  - {id: M12, stage: "⚡ Performance", icon: "⏳", step: "Prefill time → TTFT",
+     behind: "The whole prompt is processed in parallel in one big pass: lots of math per byte, so it's compute-bound. Queue wait comes first.",
+     formula: "TTFT ≈ queue + tokenize + (2 × params × input tokens) ÷ achieved FLOPS",
+     example: "1,024 tokens × 0.98 GFLOP ≈ 1.0 TFLOP → at an assumed 10 TFLOPS achieved ≈ 100 ms",
+     metric: "TTFT (ms), P50/P95/P99",
+     assumptions: "10 TFLOPS achieved is an example, not a B70 figure; measure it",
+     dependencies: "--max-num-batched-tokens (chunked prefill), prefix caching",
+     why: "TTFT is what users feel as 'is it thinking?'.",
+     note: "⚠️ Under load, queue time often dominates TTFT",
+     links: [vllm-bench-cli]}
+  - {id: M13, stage: "⚡ Performance", icon: "🚰", step: "Decode time → TPOT (memory-bound)",
+     behind: "To make one token, the device must stream all the weights plus this sequence's KV cache from memory. Very little math per byte.",
+     formula: "t_token ≥ (W + KV bytes read) ÷ bandwidth · tok/s ≤ 1 ÷ t_token",
+     example: "B70, batch 1, 1K context: (0.98 GB + 12.6 MB) ÷ 608 GB/s ≈ 1.63 ms → ≤ ≈ 613 tok/s",
+     metric: "TPOT / ITL (ms)",
+     assumptions: "Perfect bandwidth use (real: lower); BF16",
+     dependencies: "Memory bandwidth, dtype",
+     why: "Gives the speed ceiling. Measured far below it → look for software inefficiency.",
+     note: "💡 Halving bytes per weight (FP8) roughly doubles this ceiling",
+     links: [ark-arc-pro-b70]}
+  - {id: M14, stage: "⚡ Performance", icon: "📦", step: "Batching raises throughput",
+     behind: "With B requests in one step, the weights are read once and used B times; only the KV reads grow with B.",
+     formula: "step ≈ (W + B × KV per sequence) ÷ bandwidth · throughput ≈ B ÷ step",
+     example: "B = 32 at 1K context: (0.98 + 0.40) GB ÷ 608 GB/s ≈ 2.27 ms → ≈ 14,071 tok/s total, ≈ 440 tok/s per user",
+     metric: "output tok/s, tok/s per user",
+     assumptions: "Still memory-bound at B = 32; ceiling, not a measurement",
+     dependencies: "--max-num-seqs, KV space (M04)",
+     why: "Shows why serving 32 users costs far less than 32x serving one.",
+     note: "⚠️ Past the roofline ridge, compute becomes the limit and gains flatten",
+     links: [arxiv-pagedattention, ark-arc-pro-b70]}
+  - {id: M15, stage: "⚡ Performance", icon: "🏔️", step: "Arithmetic intensity and the roofline",
+     behind: "Count FLOPs done per byte moved. Below the device's ridge point you're waiting on memory; above it, on math.",
+     formula: "AI = FLOPs ÷ bytes · ridge = peak FLOPS ÷ bandwidth · decode AI ≈ batch size (BF16)",
+     example: "Batch 1: 0.98 GFLOP ÷ 0.98 GB ≈ 1 FLOP/byte; batch 32 ≈ 32 FLOP/byte",
+     metric: "FLOP/byte",
+     assumptions: "Peak FLOPS from your own measurement or the spec sheet",
+     dependencies: "M10, M13",
+     why: "Tells you which optimisation will help: batching and quantization (memory-bound) or faster kernels (compute-bound).",
+     note: "💡 One picture answers 'hardware limit or software gap?'",
+     links: []}
+  - {id: M16, stage: "⚡ Performance", icon: "⏱️", step: "Latency decomposition: TTFT, TPOT, E2E",
+     behind: "A request's life = wait in queue → prefill → first token → one decode step per remaining token.",
+     formula: "E2E = TTFT + (N − 1) × TPOT · TPOT = (E2E − TTFT) ÷ (N − 1)",
+     example: "TTFT 100 ms, TPOT 5 ms, 256 output tokens → E2E = 0.1 + 255 × 0.005 = 1.375 s",
+     metric: "ms per phase",
+     assumptions: "Example numbers",
+     dependencies: "Per-request timestamps (vllm bench serve --save-result)",
+     why: "Tells you which phase to fix: queueing, prefill or decode.",
+     note: "ℹ️ vLLM bench reports TTFT, TPOT, ITL and E2E with mean, median and P99",
+     links: [vllm-bench-cli]}
+  - {id: M17, stage: "⚡ Performance", icon: "🚦", step: "Little's law: load ↔ concurrency",
+     behind: "In a steady state, requests in flight = how fast they arrive × how long each stays.",
+     formula: "L = λ × W",
+     example: "10 req/s × 1.375 s = 13.75 requests in flight",
+     metric: "concurrency, req/s",
+     assumptions: "Steady state (arrivals ≈ completions)",
+     dependencies: "M16",
+     why: "Converts 'users per second' into the concurrency to benchmark, and predicts when the queue explodes.",
+     note: "⚠️ If λ exceeds capacity, W grows without bound: latency cliff",
+     links: []}
+  - {id: M18, stage: "⚡ Performance", icon: "📊", step: "Percentiles and sample size",
+     behind: "Sort all latencies; P95 is the value 95% of requests beat. The tail is where users complain.",
+     formula: "P_q = value at rank ⌈q × n⌉ · need n ≳ 10 ÷ (1 − q) for a stable estimate",
+     example: "Stable P99 needs ≳ 1,000 requests; P95 ≳ 200",
+     metric: "P50 / P95 / P99 (ms)",
+     assumptions: "Rule of thumb ≈ 10 samples in the tail",
+     dependencies: "Enough requests per load point (--num-prompts)",
+     why: "Averages hide the slow requests; SLOs are written on percentiles.",
+     note: "⚠️ Report n with every percentile",
+     links: [vllm-bench-cli]}
+  - {id: M19, stage: "⚡ Performance", icon: "🎲", step: "Run-to-run variance",
+     behind: "Clocks, caches, background work and thermals make each run a little different.",
+     formula: "mean ± σ · CV = σ ÷ μ · 95% CI ≈ mean ± 1.96 × σ ÷ √n",
+     example: "5 runs: 1,000 tok/s, σ = 30 → ±26 tok/s (95% CI)",
+     metric: "CV %, CI",
+     assumptions: "Roughly normal run-to-run noise",
+     dependencies: "≥ 3 repeats per configuration",
+     why: "Two configurations within each other's noise are a tie, not a win.",
+     note: "💡 Warm up first; discard the first run",
+     links: []}
+  - {id: M20, stage: "⚡ Performance", icon: "🎯", step: "Goodput against SLOs",
+     behind: "Count only requests that met every target. Throughput that misses SLOs is wasted work.",
+     formula: "goodput = requests meeting all SLOs ÷ all requests · effective tok/s = tok/s × goodput",
+     example: "SLO TTFT ≤ 500 ms and TPOT ≤ 50 ms; 92 of 100 pass → 92%",
+     metric: "% of requests, effective tok/s",
+     assumptions: "Example SLOs",
+     dependencies: "Per-request results, agreed SLOs",
+     why: "The fair yes/no answer for a POC: max load where goodput ≥ target.",
+     note: "ℹ️ Sweep load and report the knee",
+     links: [vllm-bench-cli]}
+  - {id: M21, stage: "⚡ Performance", icon: "♻️", step: "Prefix caching savings",
+     behind: "If requests share a prefix (system prompt), vLLM can reuse its stored KV blocks and skip that part of prefill.",
+     formula: "FLOPs saved/request ≈ 2 × params × shared tokens",
+     example: "500-token shared system prompt → ≈ 0.49 TFLOP saved per request",
+     metric: "TTFT drop, cache hit rate",
+     assumptions: "Prefix byte-identical across requests",
+     dependencies: "Prefix caching enabled (on by default in LLM-Scaler; --no-enable-prefix-caching disables it)",
+     why: "Big TTFT and cost win for chat and agents with long fixed instructions.",
+     note: "⚠️ Benchmarks with random prompts hide this benefit; benchmarks with identical prompts exaggerate it",
+     links: [llm-scaler-vllm-readme, vllm-engine-args]}
+  - {id: M22, stage: "⚡ Performance", icon: "🔀", step: "Tensor parallelism: when (not) to split",
+     behind: "TP slices each layer's heads across devices and adds an all-reduce per layer to stitch results together.",
+     formula: "TP must divide attention heads · speedup ≈ 1 ÷ ((1 − c) ÷ n + c)",
+     example: "14 heads → TP ∈ {1, 2, 7, 14}; the model fits on one card → TP = 1",
+     metric: "speedup vs TP = 1",
+     assumptions: "c = communication fraction (measure it)",
+     dependencies: "-tp / --tensor-parallel-size, interconnect",
+     why: "Splitting a small model only adds communication; use extra cards as replicas instead.",
+     note: "💡 Replicas scale throughput; TP mainly helps fit or latency for big models",
+     links: [vllm-engine-args]}
+  - {id: M23, stage: "📝 Business", icon: "💰", step: "Cost per million tokens",
+     behind: "Turn the hourly price of the system into the price of the tokens it actually produced.",
+     formula: "$/1M tokens = $/hour ÷ (tok/s × 3,600) × 10⁶",
+     example: "$1/h at 3,000 tok/s → ≈ $0.093 per 1M tokens",
+     metric: "$ per 1M output tokens",
+     assumptions: "$1/h and 3,000 tok/s are examples; use measured tok/s at the chosen SLO",
+     dependencies: "M20 (use goodput-qualified throughput)",
+     why: "Customers buy on $/token.",
+     note: "⚠️ Use sustained throughput at SLO, not the peak",
+     links: []}
+  - {id: M24, stage: "📝 Business", icon: "🔋", step: "Energy per token",
+     behind: "Average power drawn while serving, divided by tokens produced per second.",
+     formula: "J/token = average W ÷ tok/s",
+     example: "230 W (B70 rated board power, upper bound) ÷ 3,000 tok/s ≈ 0.077 J/token",
+     metric: "J/token, perf/W",
+     assumptions: "Rated TBP used as an upper bound; measure real draw (xpu-smi)",
+     dependencies: "Power telemetry at the same load point",
+     why: "Power is a growing share of TCO and a frequent customer constraint.",
+     note: "⚠️ Board power ≠ wall power (host, fans, PSU losses)",
+     links: [ark-arc-pro-b70]}
+
+sources:
+  vllm-engine-args:
+    title: vLLM engine arguments
+    publisher: vLLM documentation
+    url: https://docs.vllm.ai/en/latest/configuration/engine_args.html
+    kind: upstream
+    checked: 2026-10-20
+    status: available
+    product: vLLM serving engine
+    version: docs "latest" as of check date
+    facts:
+      - "--block-size - size of a contiguous cache block in number of tokens."
+      - "--gpu-memory-utilization - fraction of GPU memory for the model executor, 0 to 1; default 0.92."
+      - "--tensor-parallel-size - number of tensor parallel groups; default 1."
+    review_by: 2027-01-20

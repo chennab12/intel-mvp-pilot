@@ -167,3 +167,33 @@ Three sections appended to the sidebar. Nothing in the earlier sections changed.
 - Tests are in `tests/test_model_lab.py`, plus AppTest cases in `tests/test_app.py`. The full suite is now 115 tests.
 
 **Data labels:** measured results are timed on the machine running the app. The endpoint, load test, agent planner, tokens and latencies are simulated. The demo-stack versions in the agent environment are invented and are not Intel support statements.
+
+## Golden Master Cheatsheet (added section)
+
+**🧾 Golden Master Cheatsheet** is the 15th section in the sidebar. Nothing in the earlier sections changed.
+
+It is one end-to-end table for `Qwen/Qwen2.5-0.5B-Instruct`. It covers 20 steps in four phases: 🧰 setup → ✅ is it functional? → ⚡ is it performant? → 📝 report.
+
+Each step has these columns:
+- 💡 why the step is needed, in simple terms
+- 🐍 the Hugging Face Transformers + PyTorch command (CPU)
+- 🚀 the vLLM equivalent
+- 🔷 what changes on an **Intel Arc Pro B70** GPU, and ❓ why
+- 📐 key metrics, numbers and formulas
+- 🔑 core concepts
+- 🔗 source links
+
+The page also has:
+- Computed key numbers for the model:
+  - BF16 weights ≈ 0.98 GB
+  - KV cache = 12 KiB per token
+  - decode ceiling ≈ 620 tok/s on the B70
+- Filters by phase and by text.
+- A step-card view with full code snippets.
+- Markdown and CSV downloads.
+
+Model facts come from the model card and `config.json`. B70 facts come from Intel ARK and Intel's LLM-Scaler repo. All of these were checked on 2026-10-20 and are listed on the page.
+
+Every command is illustrative: the app never runs it. Computed numbers are arithmetic upper bounds, not measurements. The content lives in `content/cheatsheet.yaml`. The tests in `tests/test_cheatsheet.py` recompute every number quoted in the text.
+
+![Golden Master Cheatsheet](screenshots/golden-master-cheatsheet.png)

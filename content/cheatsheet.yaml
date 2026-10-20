@@ -1,0 +1,460 @@
+# Golden Master Cheatsheet: end-to-end functional -> performance testing of Qwen/Qwen2.5-0.5B-Instruct
+# with Hugging Face Transformers + PyTorch and with vLLM, plus what changes on an Intel Arc Pro B70 GPU.
+#
+# Every command is ILLUSTRATIVE: this app never runs it. Check flags against the docs for your exact versions.
+# Model facts come from the model card and config.json (sources below, checked 2026-10-20).
+# Numbers marked "computed" are arithmetic from those facts; the tests recompute them.
+# Numbers marked "assumption" are examples you must replace with your own.
+
+model:
+  id: Qwen/Qwen2.5-0.5B-Instruct
+  params_billion: 0.49
+  non_embedding_params_billion: 0.36
+  layers: 24
+  q_heads: 14
+  kv_heads: 2
+  hidden_size: 896
+  head_dim: 64          # hidden_size / q_heads = 896 / 14
+  vocab_size: 151936
+  context_tokens: 32768
+  generation_tokens: 8192
+  dtype: bfloat16
+  license: apache-2.0
+  architecture: "Qwen2ForCausalLM: RoPE, SwiGLU, RMSNorm, attention QKV bias, tied word embeddings, GQA (14 Q / 2 KV heads)"
+
+b70:
+  name: Intel Arc Pro B70 (products formerly Battlemage)
+  memory_gb: 32
+  bandwidth_gb_s: 608
+  xe_cores: 32
+  xmx_engines: 256
+  tbp_w: 230
+
+assumptions:
+  laptop_bandwidth_gb_s: 60      # example dual-channel DDR5 laptop; check your own spec
+  gpu_memory_utilization: 0.9
+
+phases:
+  - {id: setup, icon: "🧰", name: "0 · Setup"}
+  - {id: functional, icon: "✅", name: "1 · Is it functional?"}
+  - {id: performance, icon: "⚡", name: "2 · Is it performant?"}
+  - {id: report, icon: "📝", name: "3 · Report"}
+
+steps:
+  - id: S01
+    phase: setup
+    icon: "🖥️"
+    step: Check the hardware and driver
+    why_simple: "Make sure the machine and its driver are alive before blaming the model. No driver, no GPU."
+    hf_cmd: "lscpu | grep -i 'model name\\|flags' ; free -h"
+    vllm_cmd: "Same host checks. vLLM CPU backend: AVX512 recommended on x86 (AVX2 works with limited features)"
+    b70_cmd: "ls -l /dev/dri ; groups   # need 'render' and 'video' ; xpu-smi discovery"
+    b70_why: "A GPU needs a kernel driver, firmware and the Level Zero runtime. Your user must be in the render and video groups to open /dev/dri. LLM-Scaler ships an offline installer with kernel, firmware, driver and tools for a fresh Ubuntu 24.04."
+    metrics: ["CPU flags: avx512*, amx* (fast BF16 on Xeon)", "RAM free ≥ model + KV cache", "B70: 32 GB GDDR6, 608 GB/s, 32 Xe-cores, 256 XMX, 230 W TBP"]
+    keywords: [driver, firmware, Level Zero, /dev/dri, render group]
+    links: [ark-arc-pro-b70, llm-scaler-vllm-readme, vllm-cpu-install]
+
+  - id: S02
+    phase: setup
+    icon: "📦"
+    step: Install a matching software stack
+    why_simple: "Each layer must be a version the layer below supports. A mismatch is the #1 bring-up blocker."
+    hf_cmd: "python -m venv .venv && pip install torch transformers accelerate"
+    vllm_cmd: "pip install vllm   # CPU: pre-built x86 wheels since v0.17.0, or docker vllm/vllm-openai-cpu"
+    b70_cmd: "pip install torch --index-url https://download.pytorch.org/whl/xpu ; docker pull intel/llm-scaler-vllm:<pinned-tag>"
+    b70_why: "Default PyTorch and vLLM wheels don't contain Intel GPU kernels. Use the XPU wheel index for PyTorch and Intel's LLM-Scaler vLLM container (pin an exact tag; its docs say do NOT use 'latest')."
+    metrics: ["Record: torch, transformers, vllm, driver, container tag", "transformers ≥ 4.37 (older: KeyError 'qwen2')"]
+    keywords: [wheel index, container tag, version pinning, compatibility matrix]
+    links: [pytorch-xpu-get-started, vllm-cpu-install, llm-scaler-repo, qwen-model-card]
+    hf_code: |
+      python -m venv .venv && source .venv/bin/activate
+      pip install torch transformers accelerate      # CPU build of PyTorch
+      python -c "import torch, transformers; print(torch.__version__, transformers.__version__)"
+    b70_code: |
+      # PyTorch with Intel GPU (XPU) support
+      pip install torch --index-url https://download.pytorch.org/whl/xpu
+      pip install transformers accelerate
+      # vLLM on Arc Pro B60/B70: Intel LLM-Scaler container (pin the exact release tag)
+      sudo docker run -td --privileged --net=host --device=/dev/dri \
+        --name=lsv-container -v $HOME/LLM:/llm/models/ --shm-size="32g" \
+        --entrypoint /bin/bash intel/llm-scaler-vllm:<VERSION>
+      docker exec -it lsv-container bash
+
+  - id: S03
+    phase: setup
+    icon: "🔍"
+    step: Confirm the framework sees the device
+    why_simple: "Installed is not the same as working. Ask PyTorch directly which device it can use."
+    hf_cmd: "python -c \"import torch; print(torch.__version__, torch.get_num_threads())\""
+    vllm_cmd: "python -c \"import vllm; print(vllm.__version__)\""
+    b70_cmd: "python -c \"import torch; print(torch.xpu.is_available(), torch.xpu.get_device_name(0))\""
+    b70_why: "CPU is always there. A GPU is only usable if the framework's XPU backend finds it. If is_available() prints False, re-check the driver install (PyTorch docs)."
+    metrics: ["torch.xpu.is_available() == True", "device name mentions the B70", "CPU: threads = physical cores"]
+    keywords: [XPU, device, backend]
+    links: [pytorch-xpu-get-started]
+
+  - id: S04
+    phase: functional
+    icon: "⬇️"
+    step: Download the model and check its inventory
+    why_simple: "Make sure you got the right model, complete and unmodified, before testing it."
+    hf_cmd: "hf download Qwen/Qwen2.5-0.5B-Instruct   # older: huggingface-cli download"
+    vllm_cmd: "vllm serve downloads it on first start (or point --model at a local folder)"
+    b70_cmd: "Same files. In the container, mount them at /llm/models/ and serve the local path"
+    b70_why: "The weights are identical on every device. Download once and mount them so CPU and GPU test the exact same files."
+    metrics: ["Parameters ≈ 0.49 B (0.36 B non-embedding)", "24 layers · 14 Q heads · 2 KV heads · hidden 896 · vocab 151,936", "BF16 weights ≈ 0.49 × 2 = 0.98 GB (computed)", "sum(p.numel()) matches; file sha256 recorded"]
+    keywords: [checkpoint, config.json, safetensors, checksum, GQA, tied embeddings]
+    links: [qwen-model-card, qwen-config]
+    hf_code: |
+      from transformers import AutoConfig, AutoModelForCausalLM
+      cfg = AutoConfig.from_pretrained("Qwen/Qwen2.5-0.5B-Instruct")
+      print(cfg.num_hidden_layers, cfg.num_attention_heads, cfg.num_key_value_heads, cfg.hidden_size)  # 24 14 2 896
+      model = AutoModelForCausalLM.from_pretrained("Qwen/Qwen2.5-0.5B-Instruct")
+      print(sum(p.numel() for p in model.parameters()) / 1e9, "B params")   # about 0.49
+
+  - id: S05
+    phase: functional
+    icon: "🔥"
+    step: Load the model and tokenizer at a chosen precision
+    why_simple: "Pick the number format (FP32, BF16, FP16) on purpose. It changes memory, speed and sometimes answers."
+    hf_cmd: "AutoModelForCausalLM.from_pretrained(id, torch_dtype=torch.bfloat16)   # CPU: also try float32 as reference"
+    vllm_cmd: "vllm serve Qwen/Qwen2.5-0.5B-Instruct --dtype bfloat16"
+    b70_cmd: "model.to('xpu') with bfloat16/float16 ; vLLM: --dtype=float16 (LLM-Scaler examples)"
+    b70_why: "XMX engines accelerate low-precision matrix math, so the GPU runs BF16/FP16, not FP32. Many CPUs without AMX/AVX512-BF16 are fastest or most accurate in FP32, so the CPU FP32 run becomes your accuracy reference."
+    metrics: ["Weight memory = params × bytes/param", "FP32 1.96 GB · BF16/FP16 0.98 GB · INT8 0.49 GB · INT4 0.25 GB (computed)", "Load time (s)"]
+    keywords: [dtype, BF16, FP16, FP32, XMX, AMX]
+    links: [qwen-config, ark-arc-pro-b70, llm-scaler-vllm-readme]
+    hf_code: |
+      import torch
+      from transformers import AutoModelForCausalLM, AutoTokenizer
+      MID = "Qwen/Qwen2.5-0.5B-Instruct"
+      tok = AutoTokenizer.from_pretrained(MID)
+      model = AutoModelForCausalLM.from_pretrained(MID, torch_dtype=torch.float32).eval()  # CPU reference
+    b70_code: |
+      device = "xpu"
+      model = AutoModelForCausalLM.from_pretrained(MID, torch_dtype=torch.bfloat16).to(device).eval()
+
+  - id: S06
+    phase: functional
+    icon: "💬"
+    step: Smoke test one chat request
+    why_simple: "Send one simple message and get one sensible reply. If this fails, nothing else matters."
+    hf_cmd: "tok.apply_chat_template(messages, add_generation_prompt=True) → model.generate(max_new_tokens=32, do_sample=False)"
+    vllm_cmd: "curl localhost:8000/v1/chat/completions -d '{\"model\": ..., \"messages\": [...], \"max_tokens\": 32}'"
+    b70_cmd: "Same code with inputs .to('xpu') ; vLLM in the container with --enforce-eager --block-size 64 (LLM-Scaler example flags)"
+    b70_why: "Same model, different kernels. First calls on a GPU also compile and allocate, so a slow first reply is normal; an error or garbage text is not."
+    metrics: ["Reply non-empty and on topic", "finish_reason = stop or length", "No errors or warnings in the log"]
+    keywords: [chat template, generate, greedy, OpenAI-compatible API]
+    links: [qwen-model-card, llm-scaler-vllm-readme]
+    hf_code: |
+      messages = [{"role": "system", "content": "You are a helpful assistant."},
+                  {"role": "user", "content": "In one sentence, what is a KV cache?"}]
+      text = tok.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
+      inputs = tok([text], return_tensors="pt").to(model.device)
+      out = model.generate(**inputs, max_new_tokens=32, do_sample=False)
+      print(tok.decode(out[0][inputs.input_ids.shape[1]:], skip_special_tokens=True))
+    vllm_code: |
+      vllm serve Qwen/Qwen2.5-0.5B-Instruct --dtype bfloat16 --max-model-len 8192
+      curl -s http://localhost:8000/v1/chat/completions -H "Content-Type: application/json" -d '{
+        "model": "Qwen/Qwen2.5-0.5B-Instruct", "temperature": 0, "max_tokens": 32,
+        "messages": [{"role": "user", "content": "In one sentence, what is a KV cache?"}]}'
+    b70_code: |
+      # inside the LLM-Scaler container
+      VLLM_WORKER_MULTIPROC_METHOD=spawn vllm serve --model /llm/models/Qwen2.5-0.5B-Instruct \
+        --served-model-name qwen0.5b --dtype=float16 --enforce-eager --block-size 64 \
+        --gpu-memory-util=0.9 --max-model-len=8192 --port 8000 -tp=1
+
+  - id: S07
+    phase: functional
+    icon: "🔁"
+    step: Check determinism (same input, same output)
+    why_simple: "With randomness switched off, asking twice must give the same answer. Otherwise you can't compare anything."
+    hf_cmd: "Run generate(do_sample=False) twice → texts must be identical"
+    vllm_cmd: "temperature=0 (and a fixed seed) twice → identical; also try alone vs in a busy batch"
+    b70_cmd: "Repeat on XPU: identical run-to-run on the GPU, but may differ from the CPU text after some tokens"
+    b70_why: "GPU kernels add numbers in a different order and in lower precision, so tiny rounding differences can flip a near-tie token. Compare CPU vs GPU with a tolerance (step 9), not exact text."
+    metrics: ["Run-to-run identical (same device)", "Cross-device: first-token agreement, then tolerance", "Batch invariance: alone vs batched"]
+    keywords: [greedy decoding, temperature 0, seed, floating-point non-associativity, batch invariance]
+    links: []
+
+  - id: S08
+    phase: functional
+    icon: "🥇"
+    step: Golden prompts with known answers
+    why_simple: "Ask questions where you already know the right answer. Quick proof that it's still smart, not just running."
+    hf_cmd: "for prompt, must_contain in GOLDEN: assert must_contain in reply"
+    vllm_cmd: "Same golden list sent to /v1/chat/completions with temperature=0"
+    b70_cmd: "Same golden list on XPU; compare pass/fail with the CPU run, not the exact wording"
+    b70_why: "Precision and kernel differences can change wording. A good golden check tests the fact (\"4\", \"Paris\", valid JSON), not the whole sentence."
+    metrics: ["Golden pass rate = passed / total (target 100%)", "Examples: 2+2 → 4 · capital of France → Paris · reply is valid JSON"]
+    keywords: [golden set, regression test, exact match, contains-check]
+    links: []
+    hf_code: |
+      GOLDEN = [("What is 2 + 2? Answer with a number only.", "4"),
+                ("What is the capital of France? One word.", "Paris")]
+      def ask(q):
+          t = tok.apply_chat_template([{"role": "user", "content": q}], tokenize=False, add_generation_prompt=True)
+          ids = tok([t], return_tensors="pt").to(model.device)
+          o = model.generate(**ids, max_new_tokens=16, do_sample=False)
+          return tok.decode(o[0][ids.input_ids.shape[1]:], skip_special_tokens=True)
+      print(sum(want in ask(q) for q, want in GOLDEN), "/", len(GOLDEN))
+
+  - id: S09
+    phase: functional
+    icon: "📏"
+    step: Numerical parity against a reference
+    why_simple: "Compare the raw scores from the new device with a trusted reference. Small differences are fine; big ones mean a bug."
+    hf_cmd: "logits_ref (CPU FP32) vs logits_dev → max |diff|, cosine similarity, top-1 agreement"
+    vllm_cmd: "SamplingParams(temperature=0, logprobs=5) → compare top-5 tokens/logprobs with the HF reference"
+    b70_cmd: "Same prompts on XPU in BF16/FP16 vs CPU FP32"
+    b70_why: "BF16 keeps only ~3 significant decimal digits, so some difference is expected. Agree a tolerance up front (for example cosine ≥ 0.99 and top-1 agreement ≥ 99%; assumption, set your own)."
+    metrics: ["cos(a,b) = a·b / (‖a‖‖b‖)", "max |a − b|", "top-1 agreement = mean(argmax a == argmax b)"]
+    keywords: [logits, reference, tolerance, cosine similarity, BF16 mantissa]
+    links: []
+    hf_code: |
+      import torch.nn.functional as F
+      ids = tok(["The KV cache stores"], return_tensors="pt")
+      with torch.no_grad():
+          ref = model_cpu_fp32(**ids).logits.float()
+          dev = model_xpu_bf16(**ids.to("xpu")).logits.float().cpu()
+      print("max|diff|", (ref - dev).abs().max().item(),
+            "cos", F.cosine_similarity(ref.flatten(), dev.flatten(), dim=0).item(),
+            "top1", (ref.argmax(-1) == dev.argmax(-1)).float().mean().item())
+
+  - id: S10
+    phase: functional
+    icon: "🎯"
+    step: Accuracy gate on a fixed evaluation set
+    why_simple: "Score the model on many questions, not one. The score must stay above the bar you agreed."
+    hf_cmd: "Perplexity on a fixed text set: ppl = exp(model(ids, labels=ids).loss)"
+    vllm_cmd: "SamplingParams(prompt_logprobs=1) → perplexity from prompt logprobs; or run an eval harness against the server"
+    b70_cmd: "Same eval set and settings on XPU; compare with the CPU FP32 score"
+    b70_why: "This catches quality drops that single prompts miss (precision, quantization, kernel bugs). The device should not change the score beyond the tolerance."
+    metrics: ["PPL = exp( −(1/N) Σ log p(tokenᵢ) )  (lower is better)", "Δ score = device − reference ≤ tolerance (e.g. ≤ 1 pt; assumption)"]
+    keywords: [perplexity, NLL, eval harness, accuracy gate, tolerance]
+    links: []
+    hf_code: |
+      text = open("eval_text.txt").read()          # fixed, versioned evaluation text
+      ids = tok(text, return_tensors="pt").input_ids[:, :2048].to(model.device)
+      with torch.no_grad():
+          loss = model(ids, labels=ids).loss
+      print("perplexity", torch.exp(loss).item())
+
+  - id: S11
+    phase: functional
+    icon: "🧱"
+    step: Edge cases and limits
+    why_simple: "Try weird inputs on purpose (empty, very long, odd characters). Real users will."
+    hf_cmd: "Empty prompt · non-ASCII · prompt near 32,768 tokens · max_new_tokens up to 8,192"
+    vllm_cmd: "--max-model-len sets the limit; prompt + max_tokens over it must return HTTP 400, not crash"
+    b70_cmd: "Same cases on XPU; watch device memory at long context"
+    b70_why: "The CPU uses system RAM; the GPU has a fixed 32 GB. Long contexts grow the KV cache, so out-of-memory appears at a different length on each device."
+    metrics: ["Context 32,768 tokens · generation 8,192 tokens (model card)", "Over-limit → clear 400 error", "No crash, no hang"]
+    keywords: [max context, max_model_len, OOM, input validation]
+    links: [qwen-model-card]
+
+  - id: S12
+    phase: functional
+    icon: "🔌"
+    step: API contract checks (serving)
+    why_simple: "Apps talk to the model through an API. Check the API keeps its promises, not just the model."
+    hf_cmd: "n/a for plain Transformers (no server)"
+    vllm_cmd: "GET /v1/models · schema has choices + usage · usage.total = prompt + completion · max_tokens respected · stream works"
+    b70_cmd: "Same checks against the B70 server (add --api-key if the port is reachable by others)"
+    b70_why: "The API layer is the same vLLM code, so these should pass identically. A difference points at the deployment (ports, proxy, auth), not the GPU."
+    metrics: ["total_tokens = prompt_tokens + completion_tokens", "completion_tokens ≤ max_tokens", "finish_reason present"]
+    keywords: [OpenAI-compatible API, schema, usage, streaming, auth]
+    links: [qwen-model-card, llm-scaler-vllm-readme]
+
+  - id: S13
+    phase: performance
+    icon: "🌡️"
+    step: Warm up before timing
+    why_simple: "The first runs are slow for setup reasons. Throw them away or your numbers lie."
+    hf_cmd: "Run 3-5 untimed generate() calls first ; time with time.perf_counter()"
+    vllm_cmd: "Send a few requests before the benchmark ; ignore the first results"
+    b70_cmd: "Warm up, and call torch.xpu.synchronize() before reading the clock"
+    b70_why: "GPU work is asynchronous: Python returns before the GPU finishes. Without synchronize() you time the launch, not the work. First GPU calls also compile kernels and allocate memory."
+    metrics: ["Report steady-state only", "Note first-call latency separately"]
+    keywords: [warm-up, JIT, asynchronous execution, synchronize]
+    links: [pytorch-xpu-get-started]
+
+  - id: S14
+    phase: performance
+    icon: "⏱️"
+    step: Single-request latency (TTFT, TPOT, E2E)
+    why_simple: "How long until the first word appears, and then how fast the rest follows."
+    hf_cmd: "TTFT ≈ time(generate(max_new_tokens=1)) ; E2E = time(generate(max_new_tokens=N))"
+    vllm_cmd: "vllm bench serve ... --max-concurrency 1 → TTFT, TPOT, ITL, E2E percentiles"
+    b70_cmd: "Same, on XPU with synchronize()"
+    b70_why: "Decode reads all the weights for every token, so it's limited by memory bandwidth: the B70's 608 GB/s vs about 60 GB/s for a typical laptop (assumption) is roughly 10x more headroom. Prefill is compute-bound, where XMX engines help."
+    metrics: ["TPOT = (E2E − TTFT) / (N − 1)", "Decode ceiling ≈ bandwidth ÷ weight bytes", "B70 BF16: 608 ÷ 0.98 ≈ 620 tok/s ceiling at batch 1 (computed upper bound, not a measurement)", "Laptop 60 GB/s: ≈ 61 tok/s ceiling (assumption)", "≈ 2 × params FLOPs per token ≈ 0.98 GFLOP"]
+    keywords: [TTFT, TPOT, ITL, E2E, prefill, decode, memory-bound, compute-bound]
+    links: [vllm-bench-cli, ark-arc-pro-b70]
+    hf_code: |
+      import time
+      def timed(n):
+          t = time.perf_counter()
+          model.generate(**inputs, max_new_tokens=n, min_new_tokens=n, do_sample=False)
+          if model.device.type == "xpu": torch.xpu.synchronize()
+          return time.perf_counter() - t
+      ttft, e2e, N = timed(1), timed(128), 128
+      print(f"TTFT {ttft*1e3:.0f} ms  TPOT {(e2e-ttft)/(N-1)*1e3:.1f} ms  ~{(N-1)/(e2e-ttft):.0f} tok/s")
+
+  - id: S15
+    phase: performance
+    icon: "🧮"
+    step: Memory budget (weights + KV cache)
+    why_simple: "Memory decides how many users fit at once. Weights are fixed; the KV cache grows with every token of every user."
+    hf_cmd: "Watch RSS (htop / psutil) during long prompts"
+    vllm_cmd: "CPU: VLLM_CPU_KVCACHE_SPACE=<GiB> ; GPU: --gpu-memory-utilization 0.9 ; startup log reports KV-cache size and max concurrency"
+    b70_cmd: "torch.xpu.max_memory_allocated() ; vLLM --gpu-memory-util=0.9 on the 32 GB card"
+    b70_why: "The CPU shares big system RAM; the GPU has a fixed 32 GB. vLLM reserves a fraction of it up front and fills it with KV-cache blocks (PagedAttention)."
+    metrics: ["KV bytes/token = 2 × layers × KV heads × head dim × bytes = 2×24×2×64×2 = 12,288 B = 12 KiB (computed)", "One 32,768-token sequence ≈ 0.40 GB KV (computed)", "B70 at 0.9: (28.8 − 0.98) GB ÷ 12 KiB ≈ 2.26 M tokens ≈ 69 full-context sequences (computed, before activations/overhead)"]
+    keywords: [KV cache, GQA, PagedAttention, gpu-memory-utilization, OOM]
+    links: [qwen-config, vllm-cpu-install, llm-scaler-vllm-readme]
+
+  - id: S16
+    phase: performance
+    icon: "📦"
+    step: Throughput vs concurrency sweep
+    why_simple: "Serving many users at once raises total output but slows each user. Find the sweet spot."
+    hf_cmd: "Batch generate (tok.padding_side='left') at batch 1, 4, 16 → tokens/s"
+    vllm_cmd: "vllm bench serve --dataset-name random --random-input-len 512 --random-output-len 128 --max-concurrency {1,4,16,64}"
+    b70_cmd: "Same sweep against the B70 server; keep input/output lengths identical to the CPU run"
+    b70_why: "Batching reuses each weight read for many users, so throughput climbs until compute or memory runs out. A GPU has far more parallel lanes than a CPU, so its curve keeps climbing to much higher concurrency."
+    metrics: ["Output tok/s = total output tokens ÷ wall time", "req/s", "Plot P95 latency vs throughput", "Knee of the curve = recommended concurrency"]
+    keywords: [continuous batching, concurrency, throughput, latency trade-off]
+    links: [vllm-bench-cli]
+    vllm_code: |
+      for c in 1 4 16 64; do
+        vllm bench serve --model Qwen/Qwen2.5-0.5B-Instruct --dataset-name random \
+          --random-input-len 512 --random-output-len 128 --num-prompts 200 \
+          --max-concurrency $c --save-result
+      done
+
+  - id: S17
+    phase: performance
+    icon: "🎯"
+    step: SLOs and goodput
+    why_simple: "Speed only counts if each user gets an answer fast enough. Count the requests that met the target."
+    hf_cmd: "From per-request timings: share with TTFT ≤ X and TPOT ≤ Y"
+    vllm_cmd: "Use the saved per-request results from vllm bench serve; compute goodput at each load"
+    b70_cmd: "Same SLOs on B70; report the highest load where goodput ≥ target"
+    b70_why: "Two devices can have the same average speed but very different tails. Goodput at a stated load is the fair yes/no answer for a POC."
+    metrics: ["Goodput = requests meeting all SLOs ÷ all requests", "Report P50 / P95 / P99 with sample count", "Example SLO: TTFT ≤ 500 ms, TPOT ≤ 50 ms (assumption)"]
+    keywords: [SLO, goodput, P95, P99, tail latency]
+    links: [vllm-bench-cli]
+
+  - id: S18
+    phase: performance
+    icon: "⚖️"
+    step: Precision and quantization trade-off
+    why_simple: "Smaller numbers mean less memory and more speed, but can cost accuracy. Measure both, every time."
+    hf_cmd: "Compare FP32 vs BF16 (and an INT8/INT4 variant if your stack supports it) on steps 8-10 and 14"
+    vllm_cmd: "--dtype bfloat16 vs float16 ; pre-quantized AWQ/GPTQ checkpoints"
+    b70_cmd: "LLM-Scaler online quantization: --quantization fp8 or sym_int4"
+    b70_why: "Fewer bytes per weight means fewer bytes read per token, which raises the bandwidth ceiling (FP8 roughly doubles it vs BF16). Always re-run the accuracy gate afterwards."
+    metrics: ["Ceiling ∝ 1 ÷ bytes per weight", "FP8 weights ≈ 0.49 GB (computed)", "Accept only if Δ accuracy ≤ tolerance"]
+    keywords: [quantization, FP8, INT4, AWQ, GPTQ, accuracy vs speed]
+    links: [llm-scaler-vllm-readme]
+
+  - id: S19
+    phase: performance
+    icon: "💰"
+    step: Cost and energy per token
+    why_simple: "Translate speed into money and power, which is what the customer actually decides on."
+    hf_cmd: "$/1M tokens from your hourly cost and measured tok/s"
+    vllm_cmd: "Use output tok/s at the chosen concurrency (step 16)"
+    b70_cmd: "Read power with xpu-smi while the benchmark runs (check xpu-smi --help for your version)"
+    b70_why: "230 W is the card's rated board power, not what it draws on this model. Measure power under load; energy per token is only meaningful at a stated concurrency."
+    metrics: ["$/1M tokens = $/hour ÷ (tok/s × 3600) × 10⁶", "J/token = average watts ÷ tok/s", "Example: $1/h at 500 tok/s = $0.56 per 1M tokens (computed)"]
+    keywords: [TCO, $/1M tokens, joules per token, utilization]
+    links: [ark-arc-pro-b70]
+
+  - id: S20
+    phase: report
+    icon: "📝"
+    step: Report so anyone can reproduce it
+    why_simple: "A number nobody can repeat is a rumour. Write down exactly what you ran."
+    hf_cmd: "pip freeze > env.txt ; save prompts, settings, raw timings ; 3+ runs"
+    vllm_cmd: "Save the exact serve and bench commands plus --save-result JSON files"
+    b70_cmd: "Also record: driver/installer version, container tag, xpu-smi output, gpu-memory-util, dtype/quantization"
+    b70_why: "Results on a GPU depend on more layers (driver, firmware, container). Without them nobody can tell a hardware effect from a software one."
+    metrics: ["Same model, prompts, lengths and settings on both devices", "Mean ± spread over ≥ 3 runs", "Functional results attached to performance results"]
+    keywords: [reproducibility, apples-to-apples, raw data, versions]
+    links: [llm-scaler-vllm-readme, vllm-bench-cli]
+
+# Sources specific to this cheatsheet (same schema as content/sources.yaml). Ids not listed here are
+# looked up in the main source registry.
+sources:
+  qwen-model-card:
+    title: Qwen2.5-0.5B-Instruct model card
+    publisher: Qwen (Hugging Face)
+    url: https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct
+    kind: upstream
+    checked: 2026-10-20
+    status: available
+    product: Qwen/Qwen2.5-0.5B-Instruct
+    version: model card as of check date
+    facts:
+      - 0.49B parameters (0.36B non-embedding), 24 layers, 14 Q / 2 KV attention heads (GQA).
+      - Context 32,768 tokens; generation 8,192 tokens. Apache-2.0 license.
+      - transformers < 4.37.0 fails with KeyError 'qwen2'. Quickstart uses apply_chat_template and generate.
+      - vLLM deployment - vllm serve "Qwen/Qwen2.5-0.5B-Instruct", OpenAI-compatible /v1/chat/completions.
+    review_by: 2027-04-20
+  qwen-config:
+    title: Qwen2.5-0.5B-Instruct config.json
+    publisher: Qwen (Hugging Face)
+    url: https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct/blob/main/config.json
+    kind: upstream
+    checked: 2026-10-20
+    status: available
+    product: Qwen/Qwen2.5-0.5B-Instruct
+    version: main branch as of check date
+    facts:
+      - hidden_size 896, intermediate_size 4864, num_hidden_layers 24, num_attention_heads 14, num_key_value_heads 2.
+      - max_position_embeddings 32768, vocab_size 151936, torch_dtype bfloat16, tie_word_embeddings true.
+    review_by: 2027-04-20
+  llm-scaler-repo:
+    title: Intel LLM Scaler (GitHub)
+    publisher: Intel
+    url: https://github.com/intel/llm-scaler
+    kind: official
+    checked: 2026-10-20
+    status: available
+    product: Intel LLM Scaler for Intel Arc Pro B60 and B70 GPUs
+    version: README as of check date (latest vLLM image intel/llm-scaler-vllm:0.26.0-b2, 2026.09)
+    facts:
+      - README says LLM Scaler runs on Intel Arc Pro B60 and B70 GPUs.
+      - Docker images intel/llm-scaler-vllm and intel/llm-scaler-omni, released with version tags.
+    review_by: 2027-01-20
+  llm-scaler-vllm-readme:
+    title: Intel LLM Scaler - vLLM getting started
+    publisher: Intel
+    url: https://github.com/intel/llm-scaler/blob/main/vllm/README.md
+    kind: official
+    checked: 2026-10-20
+    status: available
+    product: intel/llm-scaler-vllm container
+    version: README as of check date
+    facts:
+      - Use an exact release tag; do NOT use the latest tag.
+      - docker run with --privileged --net=host --device=/dev/dri --shm-size=32g; users need video and render groups.
+      - Example serve flags include --dtype=float16, --enforce-eager, --block-size 64, --gpu-memory-util=0.9, -tp=1, --quantization fp8 or sym_int4.
+      - Host - fresh Ubuntu 24.04 install; offline installer includes kernel, GPU firmware, driver and tools (xpu-smi).
+    review_by: 2027-01-20
+  vllm-cpu-install:
+    title: vLLM CPU installation
+    publisher: vLLM documentation
+    url: https://docs.vllm.ai/en/latest/getting_started/installation/cpu.html
+    kind: upstream
+    checked: 2026-10-20
+    status: available
+    product: vLLM CPU backend
+    version: docs "latest" as of check date
+    facts:
+      - x86 Linux with AVX512 recommended (AVX2 limited); ARM needs NEON; Apple silicon experimental, build from source.
+      - Pre-built x86 wheels since v0.17.0; docker vllm/vllm-openai-cpu.
+      - VLLM_CPU_KVCACHE_SPACE sets KV-cache size in GiB; VLLM_CPU_OMP_THREADS_BIND sets core binding.
+    review_by: 2027-01-20

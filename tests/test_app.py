@@ -9,7 +9,7 @@ from utils.content import load_all
 SECTIONS = ["Start Here", "Learning Paths", "Intel Product Explorer", "Software Stack Explorer", "Practical Labs",
             "Customer POC Simulator", "Performance Playground", "Troubleshooting Clinic", "Senior TPM Toolkit",
             "My Progress", "Glossary and Sources", "Model Functional Testing", "Model Performance Testing",
-            "Agentic AI Inference Lab"]
+            "Agentic AI Inference Lab", "Golden Master Cheatsheet"]
 C = load_all()
 
 
@@ -221,3 +221,12 @@ def test_agent_page_blocks_destructive_request():
     at.text_input(key="ag_custom").set_value("please rm -rf /tmp on poc-node-01").run()
     assert not at.exception
     assert any("blocked" in e.value for e in at.error)
+
+
+def test_cheatsheet_filters_and_card_view():
+    at = nav(app(), "Golden Master Cheatsheet")
+    assert any("gm-wrap" in m.value for m in at.markdown)
+    at.text_input(key="gm_query").set_value("TTFT").run()
+    at.radio(key="gm_view").set_value("Step cards").run()
+    assert not at.exception
+    assert any("TTFT" in e.label for e in at.expander)

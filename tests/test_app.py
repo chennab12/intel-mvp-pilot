@@ -8,7 +8,8 @@ from utils.content import load_all
 
 SECTIONS = ["Start Here", "Learning Paths", "Intel Product Explorer", "Software Stack Explorer", "Practical Labs",
             "Customer POC Simulator", "Performance Playground", "Troubleshooting Clinic", "Senior TPM Toolkit",
-            "My Progress", "Glossary and Sources"]
+            "My Progress", "Glossary and Sources", "Model Functional Testing", "Model Performance Testing",
+            "Agentic AI Inference Lab"]
 C = load_all()
 
 
@@ -198,3 +199,25 @@ def test_product_explorer_filter():
     at.multiselect(key="pe_status").set_value(["announced"]).run()
     assert not at.exception
     assert any("Crescent Island" in e.label for e in at.expander)
+
+
+@pytest.mark.parametrize("fault", ["Label order swapped in the deployed config", "Tokenizer mismatch (deployed tokenizer drops words)"])
+def test_functional_page_shows_failure_for_injected_bug(fault):
+    at = nav(app(), "Model Functional Testing")
+    at.selectbox(key="mf_fault").set_value(fault).run()
+    assert not at.exception
+    assert any("First failure" in e.value for e in at.error)
+
+
+def test_performance_page_load_test_and_report():
+    at = nav(app(), "Model Performance Testing")
+    assert not at.exception
+    assert len(at.session_state["mp_last_load"]) == 2
+    assert any(m.label == "Goodput" for m in at.metric)
+
+
+def test_agent_page_blocks_destructive_request():
+    at = nav(app(), "Agentic AI Inference Lab")
+    at.text_input(key="ag_custom").set_value("please rm -rf /tmp on poc-node-01").run()
+    assert not at.exception
+    assert any("blocked" in e.value for e in at.error)

@@ -143,3 +143,27 @@ tests/                 # pytest + Streamlit AppTest
 - The app never runs shell commands or code that users type. Labs call predefined Python functions with capped input sizes.
 - No telemetry (`gatherUsageStats = false`), no external calls at runtime, no accounts.
 - Don't paste confidential Intel or customer information into a hosted copy; template edits stay in your session until you download them.
+
+## Hands-on model testing and agentic inference (added sections)
+
+Three sections appended to the sidebar. Nothing in the earlier sections changed. All three run on a normal laptop, with no accelerator, API key or network access needed.
+
+| Section | What it does |
+|---|---|
+| ✅ Model Functional Testing | Trains a **real tiny model** in-app: a NumPy softmax classifier that routes 80 fictional POC tickets to driver, memory, performance, accuracy or network. It then runs the 7-step functional test plan: load and inventory with checksum, smoke test, determinism, golden outputs, edge cases, an accuracy gate on held-out data, and an INT8 regression check. You can inject classic deployment bugs (label order swapped, corrupted weights, tokenizer mismatch) and see which checks catch them. It also covers API contract checks against a **simulated** OpenAI-style endpoint with injectable server bugs, a confusion matrix and per-class metrics, a try-your-own-ticket box (classified only, never executed), and illustrative real-stack commands |
+| ⏱️ Model Performance Testing | **Measured** single-request latency of the real model: P50/P95/P99, warm-up vs steady state, and pass/fail against a P95 target. **Measured** batch-size scaling. A **simulated** continuous-batching LLM server replays a 120-request trace, so you can compare two configurations on TTFT, TPOT, E2E, tokens/s and goodput against SLOs. Includes a downloadable Markdown benchmark report and an illustrative `vllm bench serve` workflow |
+| 🤖 Agentic AI Inference Lab | A step-by-step ReAct loop: input guardrail → LLM call → tool-call validation (allowlist and arguments) → tool → observation → final answer. Per-step **simulated** tokens and latency show the context growing. The "LLM" is a deterministic rule-based planner, and the tools are real Python functions over a fictional environment (`content/model_lab/agent_env.yaml`) plus the app's calculators and glossary. You can inject model failures (hallucinated tool, loop, skipping tools, bad arguments). An 8-task eval reports task success, tool-choice accuracy, steps, tokens and estimated cost. Shell or destructive requests are blocked before any model call. Includes an illustrative OpenAI-compatible tool-calling loop for a real server |
+
+| | |
+|---|---|
+| ![Model Functional Testing](screenshots/model-functional-testing.png) | ![Model Performance Testing](screenshots/model-performance-testing.png) |
+| ![Agentic AI Inference Lab](screenshots/agentic-ai-inference-lab.png) | |
+
+**Files**
+- `utils/model_lab.py`: the model, the functional suite, the simulated endpoint, the measurements and the load-test simulation.
+- `utils/agent_lab.py`: the agent loop, tools, guardrails and eval.
+- `modules/model_testing.py` and `modules/agent_lab_page.py`: the UI.
+- `content/model_lab/`: the fictional tickets, request trace and agent environment. Regenerate them with `python scripts/make_model_lab_data.py`.
+- Tests are in `tests/test_model_lab.py`, plus AppTest cases in `tests/test_app.py`. The full suite is now 115 tests.
+
+**Data labels:** measured results are timed on the machine running the app. The endpoint, load test, agent planner, tokens and latencies are simulated. The demo-stack versions in the agent environment are invented and are not Intel support statements.

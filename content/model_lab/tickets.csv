@@ -1,0 +1,81 @@
+text,label,split,id
+service account cannot open the device permission denied on render node,driver,test,T001
+urgent: answers got worse after int8 quantization,accuracy,train,T002
+p95 latency doubled after moving to the new cluster,performance,train,T003
+out of memory when concurrency reaches 16 users,memory,train,T004
+evaluation score dropped 64 points versus the reference,accuracy,test,T005
+utilization is low and the accelerator looks idle during serving,performance,train,T006
+urgent: throughput is half of the benchmark on the framework server,performance,train,T007
+model output is truncated and quality looks wrong,accuracy,train,T008
+scaling across nodes stalls in all reduce communication,network,test,T009
+answers got worse after int8 quantization,accuracy,train,T010
+throughput is half of the benchmark on the framework server,performance,train,T011
+rdma link negotiated a lower speed on one port,network,train,T012
+urgent: collective communication dominates step time at 64 nodes,network,test,T013
+initialization error at startup since the serving runtime update,driver,train,T014
+utilization is low and the accelerator looks idle during serving,performance,train,T015
+utilization is low and the accelerator looks idle during serving,performance,train,T016
+rdma link negotiated a lower speed on one port,network,test,T017
+two servers train only slightly faster than one,network,train,T018
+poc blocker: oom error during long prompts with 32 sequences,memory,train,T019
+utilization is low and the accelerator looks idle during serving,performance,train,T020
+after the container upgrade the device is not detected,driver,test,T021
+time to first token is too slow for 64 concurrent users,performance,train,T022
+urgent: time to first token is too slow for 8 concurrent users,performance,train,T023
+citation accuracy regressed after switching precision,accuracy,train,T024
+rdma link negotiated a lower speed on one port,network,test,T025
+customer reports after the framework upgrade the device is not detected,driver,train,T026
+oom error during long prompts with 32 sequences,memory,train,T027
+after the gpu upgrade the device is not detected,driver,train,T028
+model weights do not fit on the card at bf16,memory,test,T029
+urgent: device memory climbs until the server crashes at 64 users,memory,train,T030
+time to first token is too slow for 64 concurrent users,performance,train,T031
+scaling across nodes stalls in all reduce communication,network,train,T032
+urgent: model output is truncated and quality looks wrong,accuracy,test,T033
+allocation failed for kv cache at 8k context length,memory,train,T034
+version mismatch between driver and gpu runtime breaks startup,driver,train,T035
+collective communication dominates step time at 40 nodes,network,train,T036
+model weights do not fit on the card at bf16,memory,test,T037
+urgent: after the framework upgrade the device is not detected,driver,train,T038
+oom error during long prompts with 8 sequences,memory,train,T039
+customer reports evaluation score dropped 64 points versus the reference,accuracy,train,T040
+answers got worse after int8 quantization,accuracy,test,T041
+out of memory when concurrency reaches 8 users,memory,train,T042
+customer reports evaluation score dropped 16 points versus the reference,accuracy,train,T043
+urgent: citation accuracy regressed after switching precision,accuracy,train,T044
+outputs differ from the reference platform on the golden prompts,accuracy,test,T045
+device memory climbs until the server crashes at 64 users,memory,train,T046
+answers got worse after int8 quantization,accuracy,train,T047
+after the container upgrade the device is not detected,driver,train,T048
+poc blocker: model output is truncated and quality looks wrong,accuracy,test,T049
+initialization error at startup since the framework runtime update,driver,train,T050
+customer reports service account cannot open the device permission denied on render node,driver,train,T051
+framework says no device found after reinstalling the openvino driver,driver,train,T052
+rdma link negotiated a lower speed on one port,network,test,T053
+customer reports collective communication dominates step time at 32 nodes,network,train,T054
+collective communication dominates step time at 8 nodes,network,train,T055
+collective communication dominates step time at 32 nodes,network,train,T056
+collective communication dominates step time at 32 nodes,network,test,T057
+outputs differ from the reference platform on the golden prompts,accuracy,train,T058
+throughput is half of the benchmark on the container server,performance,train,T059
+poc blocker: answers got worse after int8 quantization,accuracy,train,T060
+allocation failed for kv cache at 64k context length,memory,test,T061
+framework says no device found after reinstalling the serving driver,driver,train,T062
+utilization is low and the accelerator looks idle during serving,performance,train,T063
+allocation failed for kv cache at 16k context length,memory,train,T064
+out of memory when concurrency reaches 64 users,memory,test,T065
+p95 latency doubled after moving to the new cluster,performance,train,T066
+scaling across nodes stalls in all reduce communication,network,train,T067
+utilization is low and the accelerator looks idle during serving,performance,train,T068
+p95 latency doubled after moving to the new cluster,performance,test,T069
+after the serving upgrade the device is not detected,driver,train,T070
+poc blocker: model weights do not fit on the card at bf16,memory,train,T071
+evaluation score dropped 8 points versus the reference,accuracy,train,T072
+poc blocker: oom error during long prompts with 8 sequences,memory,test,T073
+two servers train only slightly faster than one,network,train,T074
+tokens per second dropped after the serving update,performance,train,T075
+version mismatch between driver and openvino runtime breaks startup,driver,train,T076
+collective communication dominates step time at 16 nodes,network,test,T077
+allocation failed for kv cache at 40k context length,memory,train,T078
+poc blocker: version mismatch between driver and framework runtime breaks startup,driver,train,T079
+initialization error at startup since the container runtime update,driver,train,T080

@@ -1,0 +1,773 @@
+path: foundations
+lessons:
+  - id: cpu-gpu-npu-accelerator
+    title: CPU vs GPU vs NPU vs AI accelerator
+    level: Beginner
+    minutes: 20
+    product_specific: true
+    summary: Four kinds of processors, four different jobs, four different software stacks.
+    explanation: |
+      Think of a restaurant kitchen.
+
+      - **CPU (central processing unit)** is the head chef. A few very capable cores that can do anything, switch tasks fast and run the operating system. Intel Xeon is the data center CPU; Intel Core Ultra is the client (laptop/desktop) CPU.
+      - **GPU (graphics processing unit)** is a line of hundreds of prep cooks doing the same chop on many vegetables at once. Thousands of simpler lanes run the same math on lots of data in parallel. That is exactly what neural networks need (big matrix multiplies). Intel Arc Pro B-Series is an example of an Intel discrete GPU.
+      - **NPU (neural processing unit)** is a small, very efficient station built only for running trained models at low power, for example blurring a video-call background on a laptop battery. On Intel it ships inside Core Ultra client processors.
+      - **AI accelerator** is a purpose-built kitchen for one cuisine. Intel Gaudi is designed for deep-learning training and inference, with its own matrix engines, high-bandwidth memory and built-in Ethernet networking.
+
+      Some CPUs also have *built-in* AI help. Intel Xeon processors include Intel AMX (Advanced Matrix Extensions), a matrix engine inside each core, so some inference runs well on the CPU alone.
+
+      The key point for a TPM: **each of these has a different driver, runtime and framework path.** "It works on GPU" tells you almost nothing about whether it works on Gaudi or on an NPU.
+    why_it_matters: |
+      Customers often ask "which Intel chip should I use?" before they have described the workload. You need to know the job each processor is good at so you can steer discovery, set expectations and pull in the right engineering team. Mixing up the software stacks is one of the most common causes of wasted POC weeks.
+    customer_example: |
+      A fictional retailer, *Northwind Shops*, wants product-description generation. Their IT team says "we already own Xeon servers, can we just use those?" The honest answer depends on model size, latency target and volume. A small model with modest traffic may run acceptably on Xeon with AMX. A large model at high concurrency probably needs an accelerator. Your job is to turn "can we?" into a measured test.
+    visual:
+      type: table
+      caption: "How the four processor types differ (general characteristics, not product specs)"
+      columns: [Type, Intel example, Best at, Typical software path]
+      rows:
+        - [CPU, "Xeon 6, Core Ultra", "General work, orchestration, smaller or latency-tolerant inference", "PyTorch (CPU), OpenVINO CPU, oneDNN"]
+        - [GPU, "Arc Pro B60 / B70", "Massively parallel matrix math", "GPU driver + Level Zero/oneAPI + PyTorch XPU or OpenVINO GPU"]
+        - [NPU, "NPU in Core Ultra", "Low-power on-device inference", "NPU driver + OpenVINO NPU plugin"]
+        - [AI accelerator, "Gaudi 3", "Large-scale deep-learning training and inference", "Gaudi driver/firmware + Intel Gaudi software + PyTorch bridge"]
+    exercise:
+      label: Runs on a normal laptop
+      title: Find out what processors your own laptop has
+      steps:
+        - "Windows: open Task Manager > Performance. Note CPU, GPU and (if present) NPU tiles."
+        - "macOS: Apple menu > About This Mac. Linux: run the commands below."
+        - Write down which of the four categories you actually have.
+      code: |
+        # Linux (read-only commands, safe to run)
+        lscpu | head -20        # CPU model, cores, threads
+        lspci | grep -i -E "vga|display|3d|processing"   # GPUs and other accelerators
+      lab: lab-system-inventory
+    expected_output: |
+      Illustrative output (not from a real run):
+        Model name:   <your CPU model>
+        CPU(s):       16
+        00:02.0 VGA compatible controller: <integrated graphics>
+      Most laptops show a CPU and an integrated GPU. Newer Core Ultra laptops also show an NPU in Task Manager.
+    interpretation: |
+      If you see an integrated GPU but no NPU, on-device inference would use CPU or GPU paths. Notice that the operating system lists each device separately; each one needs its own driver.
+    misconceptions:
+      - "\"GPU and accelerator are the same thing.\" Gaudi is not a GPU and does not use the GPU software stack."
+      - "\"More TOPS means faster for my model.\" Peak TOPS ignores memory bandwidth, software support and precision."
+      - "\"CPUs can't do AI.\" Xeon with AMX runs many inference workloads; whether it meets the customer's latency target must be measured."
+    senior_questions:
+      - Which processor types are actually in the customer's target deployment, and which can they procure?
+      - Is the model supported on that device's software stack today, or would it need engineering work?
+      - What is the latency, throughput and cost target that would make one choice clearly better?
+    checks:
+      - question: A customer's model runs on an Intel Arc GPU. What can you conclude about running it on Gaudi?
+        options:
+          - It will run unchanged because both are Intel accelerators.
+          - Nothing yet; Gaudi uses a different software stack, so support must be checked separately.
+          - It will run but slower.
+          - It cannot run on Gaudi.
+        answer: 1
+        explanation: GPUs and Gaudi have separate drivers, runtimes and framework integrations. Check the Gaudi support matrix and test.
+      - question: Which Intel feature lets some inference run on Xeon without a separate accelerator card?
+        options: [Intel AMX, Level Zero, RoCE, MRDIMM]
+        answer: 0
+        explanation: Intel AMX is a matrix engine built into Xeon cores. Level Zero is a GPU runtime API, RoCE is networking, MRDIMM is a memory module type.
+    sources: [intel-amx-overview, arc-pro-b60-datasheet, gaudi3-pcie-brief, intel-core-ultra-s3-vpro, pytorch-xpu-get-started]
+
+  - id: cores-sockets-numa
+    title: Cores, threads, sockets, NUMA and caches
+    level: Beginner
+    minutes: 20
+    product_specific: true
+    summary: Why "a 64-core server" can still be slow if work lands on the wrong memory.
+    explanation: |
+      - **Core**: one independent worker inside a CPU.
+      - **Thread (hyper-thread)**: a core can often juggle two instruction streams. 64 cores may show as 128 "CPUs" in Linux.
+      - **Socket**: the physical slot a CPU package sits in. A two-socket server has two CPU packages.
+      - **Cache**: small, very fast memory on the CPU (L1, L2, L3). Hitting cache is fast; going out to RAM is slower.
+      - **NUMA (non-uniform memory access)**: in a multi-socket (or sub-divided) server, each CPU group has "near" memory and "far" memory. Reaching far memory takes longer and has less bandwidth.
+
+      Operational analogy: two warehouses connected by a road. Each warehouse has its own shelves (memory). Workers are fast with their own shelves and slower when they drive to the other warehouse.
+
+      For AI inference on CPU, a process that is spread across NUMA nodes, or whose memory sits on the "other" node, can lose a lot of performance. Engineers fix this with *pinning*: tying a process to the cores and memory of one NUMA node.
+    why_it_matters: |
+      CPU inference results vary wildly with core pinning and NUMA settings. When a customer reports "Xeon is slower than your benchmark," the first questions are about cores used, threads, sockets, NUMA binding and memory population, not about the model.
+    customer_example: |
+      Fictional *Contoso Insurance* runs an embedding model on a two-socket Xeon server and gets half the throughput Intel's engineer measured. The engineer finds the customer's container was allowed to float across both sockets. Binding one instance per socket closes most of the gap. The TPM's role: make sure the benchmark report records the binding, so the comparison is fair.
+    visual:
+      type: dot
+      caption: Two-socket server. Each socket has near memory; the link between sockets is the "far" path.
+      source: |
+        digraph G {
+          rankdir=LR; node [shape=box, style=rounded];
+          subgraph cluster0 { label="NUMA node 0"; S0 [label="Socket 0\ncores + L3 cache"]; M0 [label="DDR5 memory\n(near to socket 0)"]; S0 -> M0 [label="fast"]; }
+          subgraph cluster1 { label="NUMA node 1"; S1 [label="Socket 1\ncores + L3 cache"]; M1 [label="DDR5 memory\n(near to socket 1)"]; S1 -> M1 [label="fast"]; }
+          S0 -> S1 [label="socket link\n(slower, shared)", dir=both];
+        }
+    exercise:
+      label: Runs on a normal laptop
+      title: Read your CPU topology
+      steps:
+        - Run the commands below (Linux, or WSL on Windows).
+        - Note sockets, cores per socket, threads per core and NUMA nodes.
+        - Compare with a server spec on Intel ARK, for example the Xeon 696X listed in Sources.
+      code: |
+        lscpu | grep -E "Socket|Core|Thread|NUMA|L3"
+        # On a NUMA server you could also run (read-only):
+        numactl --hardware
+      lab: lab-system-inventory
+    expected_output: |
+      Illustrative laptop output (not from a real run):
+        Thread(s) per core:  2
+        Core(s) per socket:  8
+        Socket(s):           1
+        NUMA node(s):        1
+      A laptop almost always has 1 socket and 1 NUMA node. A two-socket server shows 2 or more NUMA nodes.
+    interpretation: |
+      One NUMA node means you do not need to worry about far memory on that machine. On servers, record NUMA layout in every environment inventory, because it changes CPU benchmark results.
+    misconceptions:
+      - "\"128 CPUs in Linux means 128 cores.\" It may be 64 cores with 2 threads each."
+      - "\"More cores always help.\" Spreading one inference process across sockets can make it slower."
+      - "\"Cache size is just a spec-sheet number.\" Models or batches that fit in cache behave very differently."
+    senior_questions:
+      - How many instances per socket were run, and were they pinned to cores and memory?
+      - Were all memory channels populated? (Missing DIMMs reduce bandwidth.)
+      - Did the comparison use the same thread count and NUMA settings on both systems?
+    checks:
+      - question: A two-socket server shows "NUMA node(s) 2". What risk does this create for a CPU inference benchmark?
+        options:
+          - None, NUMA only matters for storage.
+          - Work or memory spread across sockets can add latency and reduce bandwidth unless pinned.
+          - The server will refuse to run Python.
+          - It halves the available RAM.
+        answer: 1
+        explanation: Remote (far) memory access is slower. Pinning processes to one node's cores and memory avoids it.
+      - question: Intel ARK lists the Xeon 696X with 64 P-cores and 128 threads. Why the difference?
+        options:
+          - Half the cores are disabled.
+          - Each core can run two hardware threads.
+          - Threads count both sockets.
+          - It's a typo.
+        answer: 1
+        explanation: Simultaneous multithreading lets one core run two instruction streams, so the OS sees 128 logical CPUs.
+    sources: [ark-xeon-696x, kernel-numa]
+
+  - id: memory-types-bandwidth
+    title: "Memory: RAM vs device memory, DDR vs HBM vs GDDR, capacity vs bandwidth vs latency"
+    level: Beginner
+    minutes: 25
+    product_specific: true
+    summary: For large language models, memory size and memory speed decide most outcomes.
+    explanation: |
+      **Three questions about any memory:**
+
+      1. **Capacity**: how much fits (GB). Decides *whether* a model fits at all.
+      2. **Bandwidth**: how fast data can be moved (GB/s or TB/s). Decides how fast a large model can *generate* tokens, because every new token reads the model weights again.
+      3. **Latency**: how long one small access takes (nanoseconds). Matters for small, scattered reads.
+
+      **Where memory lives:**
+
+      - **System RAM (host memory)**: DIMMs attached to the CPU, typically **DDR5** on current Xeon.
+      - **Device memory**: memory on the accelerator card itself. GPUs often use **GDDR** (graphics DDR); data center accelerators often use **HBM** (high-bandwidth memory, stacked next to the chip for very high bandwidth).
+
+      Moving data between host RAM and device memory goes over PCIe and is far slower than either memory alone, so you want the model to live in device memory.
+
+      **Real examples (see Sources for exact pages):**
+
+      | Product | Memory | Bandwidth (vendor spec) |
+      |---|---|---|
+      | Arc Pro B60 | 24 GB GDDR6 | up to 456 GB/s |
+      | Arc Pro B70 | 32 GB GDDR6 | 608 GB/s |
+      | Gaudi 3 (HL-338 / HL-325L) | 128 GB HBM2e | 3.7 TB/s |
+      | Xeon 696X | DDR5-6400 or MRDIMM-8000, 8 channels | depends on DIMMs populated |
+
+      These are peak vendor specifications, not measured application bandwidth.
+    why_it_matters: |
+      "Does the model fit?" and "how fast will it generate?" are mostly memory questions. A TPM who can do this arithmetic catches impossible POC plans in the first meeting, before hardware is shipped.
+    customer_example: |
+      Fictional *Fabrikam Legal* wants a 70-billion-parameter model on a single 24 GB card. At 16-bit precision the weights alone are about 140 GB, so it cannot fit on one card. Options: a smaller model, quantization, more cards, or a device with more memory. You raise this before the loaner request, saving weeks.
+    visual:
+      type: bars
+      caption: Peak memory bandwidth from vendor specs (GB/s). Vendor peak values, not measured throughput.
+      x: [Arc Pro B60 (GDDR6), Arc Pro B70 (GDDR6), Gaudi 3 (HBM2e)]
+      y: [456, 608, 3700]
+      x_label: Device
+      y_label: Peak bandwidth (GB/s)
+    exercise:
+      label: Runs on a normal laptop
+      title: Feel the difference between capacity and bandwidth
+      steps:
+        - Open Practical Labs > "Memory bandwidth vs compute" and run it.
+        - It times copying a large array (bandwidth-limited) vs a matrix multiply (compute-limited) on your machine.
+        - Compare GB/s you measured with your laptop's RAM spec.
+      code: |
+        import numpy as np, time
+        a = np.ones(50_000_000, dtype=np.float32)   # 200 MB
+        t = time.perf_counter(); b = a.copy(); dt = time.perf_counter() - t
+        print(f"copied {a.nbytes*2/1e9:.2f} GB (read+write) in {dt:.3f}s -> {a.nbytes*2/1e9/dt:.1f} GB/s")
+      lab: lab-bandwidth-vs-compute
+    expected_output: |
+      Illustrative (laptops vary widely): "copied 0.40 GB (read+write) in 0.04s -> 10.0 GB/s".
+    interpretation: |
+      Your laptop probably moves somewhere in the tens of GB/s. A Gaudi 3 HBM spec of 3.7 TB/s is on the order of 100x more. That gap is why large-model token generation runs on accelerators.
+    misconceptions:
+      - "\"More GB means faster.\" Capacity decides fit; bandwidth decides speed."
+      - "\"Host RAM can stand in for device memory.\" Spilling to host over PCIe is much slower."
+      - "\"Peak bandwidth is what my app gets.\" Real workloads reach some fraction of peak."
+    senior_questions:
+      - What precision and model size is planned, and does it fit in device memory with KV cache and overhead?
+      - Is the workload limited by memory bandwidth (typical for token generation) or compute (typical for long prompt processing)?
+      - Are we quoting peak vendor bandwidth or measured bandwidth?
+    checks:
+      - question: Which memory property mainly decides whether a model fits on a device?
+        options: [Latency, Capacity, Bandwidth, Clock speed]
+        answer: 1
+        explanation: Capacity is how much you can store; bandwidth and latency describe speed.
+      - question: Why does token generation for large models depend heavily on memory bandwidth?
+        options:
+          - Each new token needs the weights to be read from memory again.
+          - Tokens are stored on disk.
+          - Bandwidth sets the context window.
+          - It doesn't; only FLOPS matter.
+        answer: 0
+        explanation: In decode, each step reads most of the weights while doing relatively little math per byte, so speed tracks bandwidth.
+    sources: [arc-pro-b60-datasheet, ark-arc-pro-b70, gaudi3-pcie-brief, gaudi3-oam-brief, ark-xeon-696x]
+
+  - id: interconnects-scale
+    title: PCIe, Ethernet, RDMA, scale-up vs scale-out
+    level: Beginner
+    minutes: 20
+    product_specific: true
+    summary: How chips, cards and servers talk to each other, and why it limits multi-device jobs.
+    explanation: |
+      - **PCIe**: the slot inside a server that connects cards (GPUs, accelerators, NICs) to the CPU. Generations (Gen 4, Gen 5) and lane counts (x8, x16) set its speed. A card can have an x16 connector but only x8 electrical lanes; the Arc Pro B60 datasheet is an example.
+      - **Ethernet**: the standard network between servers. Speeds such as 100/200/400 Gb per second.
+      - **RDMA (remote direct memory access)**: lets one machine write into another's memory without bothering the CPU on either side. **RoCE** is RDMA over Ethernet.
+      - **Scale-up**: more devices inside one server or tightly coupled group (fast links).
+      - **Scale-out**: more servers connected by the network (slower links than inside the box).
+
+      Gaudi 3 is unusual because it builds Ethernet in: the HL-325L OAM card has 24 integrated 200 GbE RoCE v2 ports, so the same standard Ethernet is used to connect accelerators.
+
+      Analogy: scale-up is people working at the same table; scale-out is people in different buildings on video calls. The work must be split so they don't spend all their time talking.
+    why_it_matters: |
+      Multi-device training and large-model inference split work across devices. If the links are slow or misconfigured, adding devices adds little speed. TPMs must confirm network topology and settings before blaming hardware or software.
+    customer_example: |
+      Fictional *Tailspin Research* sees 8-card training scale only 3x faster than 1 card. Evidence later shows RoCE was falling back to a slower path because a switch setting was wrong. The fix was networking, not the model.
+    visual:
+      type: dot
+      caption: Scale-up inside a server vs scale-out across servers
+      source: |
+        digraph G {
+          rankdir=LR; node [shape=box, style=rounded];
+          subgraph cluster_a { label="Server A (scale-up)"; CPUa [label="Host CPU"]; A1 [label="Accel 1"]; A2 [label="Accel 2"]; CPUa -> A1 [label="PCIe"]; CPUa -> A2 [label="PCIe"]; A1 -> A2 [label="device links", dir=both]; }
+          subgraph cluster_b { label="Server B"; CPUb [label="Host CPU"]; B1 [label="Accel 1"]; CPUb -> B1 [label="PCIe"]; }
+          SW [label="Ethernet switch\n(RDMA / RoCE)", shape=ellipse];
+          A1 -> SW [label="scale-out"]; B1 -> SW;
+        }
+    exercise:
+      label: Simulation only
+      title: Estimate how much time goes to communication
+      steps:
+        - Open Performance Playground > Throughput vs latency and read the formulas.
+        - In the Practical Labs "Scaling efficiency" lab, change the communication share and watch speed-up flatten.
+      code: |
+        # Amdahl-style toy model (educational estimate)
+        def speedup(n_devices, comm_fraction):
+            compute = 1 / n_devices
+            comm = comm_fraction * (n_devices > 1)
+            return 1 / (compute * (1 - comm_fraction) + comm)
+        print(round(speedup(8, 0.10), 2))
+      lab: lab-scaling-efficiency
+    expected_output: |
+      Simulated value from the toy model: speedup(8, 0.10) = 4.71. This is arithmetic, not a measurement of any product.
+    interpretation: |
+      Even 10% communication overhead caps 8-device speed-up well below 8x. Real systems overlap some communication with compute, so this toy model is pessimistic but shows the shape.
+    misconceptions:
+      - "\"x16 slot means x16 speed.\" Electrical lanes and PCIe generation matter."
+      - "\"Doubling cards doubles speed.\" Communication and imbalance reduce scaling."
+      - "\"RDMA is automatic.\" It needs NIC, switch and software configuration."
+    senior_questions:
+      - What is the network topology, link speed and switch configuration for the POC cluster?
+      - Is RDMA actually in use, and how was it verified?
+      - What scaling efficiency (speed-up / device count) does the customer need?
+    checks:
+      - question: What does RoCE stand for in practice?
+        options: [A memory type, RDMA over Converged Ethernet, A PCIe generation, A container runtime]
+        answer: 1
+        explanation: RoCE carries RDMA traffic over Ethernet.
+      - question: Eight devices give 3x speed-up. Which is the most useful first step?
+        options:
+          - Buy more devices.
+          - Gather evidence on communication time and link configuration.
+          - Switch to a smaller model immediately.
+          - Declare the hardware faulty.
+        answer: 1
+        explanation: Poor scaling is often communication-bound. Measure before changing the plan.
+    sources: [arc-pro-b60-datasheet, gaudi3-oam-brief, intel-gaudi-products]
+
+  - id: linux-basics
+    title: "Linux basics for TPMs: processes, permissions, logs, environments"
+    level: Beginner
+    minutes: 25
+    product_specific: true
+    summary: Enough Linux to read an engineer's terminal and spot the usual suspects.
+    explanation: |
+      - **Process**: a running program. `ps`, `top` or `htop` list them. Each has an ID (PID).
+      - **User and permissions**: Linux decides who can read, write or run each file and device. Accelerators appear as device files, and your user often must be in a group to use them. Intel's GPU driver docs say users need access to the DRM render nodes through the **render** group.
+      - **Logs**: the system's diary. `dmesg` shows kernel and driver messages; `journalctl` shows service logs; applications write their own logs.
+      - **Environment**: the settings a program sees, such as `PATH`, Python version, installed packages and environment variables. Two machines with the "same" software often differ here.
+
+      Operational analogy: a building with badge access. The process is a visitor, permissions are badge rules, logs are the security desk sign-in sheet, and the environment is which floor and tools the visitor was given.
+    why_it_matters: |
+      Many "the accelerator doesn't work" tickets are really permission, environment or driver-load problems. A TPM who asks for `dmesg`, group membership and versions early saves days of back-and-forth.
+    customer_example: |
+      Fictional *Woodgrove Bank* says the GPU is "not detected" by their app, but the admin account sees it. Root cause: the service account was not in the render group. The TPM's checklist item "which user runs the workload, and what groups is it in?" would have found it in minutes.
+    visual:
+      type: table
+      caption: First commands to ask for (read-only)
+      columns: [Question, Command, What it tells you]
+      rows:
+        - ["Which kernel?", "uname -r", "Kernel version; drivers depend on it"]
+        - ["Any driver errors?", "dmesg | tail -50 (often needs sudo)", "Driver load messages and failures"]
+        - ["Who am I?", "id", "User and group membership (for example render)"]
+        - ["Which Python and packages?", "python -V; pip list", "Exact software environment"]
+        - ["What is running?", "ps aux | head", "Processes and owners"]
+    exercise:
+      label: Runs on a normal laptop
+      title: Capture your own environment like an engineer would
+      steps:
+        - Run the environment inventory lab in the app, or the script below on your laptop.
+        - Save the output; you will reuse the format in the Environment Inventory template.
+      code: |
+        import platform, sys, os
+        print("OS:", platform.platform())
+        print("Python:", sys.version.split()[0])
+        print("CPU count (logical):", os.cpu_count())
+        print("PATH entries:", len(os.environ.get("PATH", "").split(os.pathsep)))
+      lab: lab-environment-inventory
+    expected_output: |
+      Illustrative (not a real run):
+        OS: Linux-6.8.0-xx-generic-x86_64-with-glibc2.39
+        Python: 3.12.3
+        CPU count (logical): 16
+        PATH entries: 9
+    interpretation: |
+      This is the minimum "version inventory." In a real POC you would add driver, firmware, runtime and framework versions.
+    misconceptions:
+      - "\"If root can see it, the app can.\" Services often run as a different user."
+      - "\"Logs are only for engineers.\" A TPM asking for the right log speeds triage."
+      - "\"Same OS means same environment.\" Packages and environment variables differ."
+    senior_questions:
+      - Which user and container runs the workload in production?
+      - Can the customer share dmesg and application logs from the failing run?
+      - Is there an environment capture from the last known-good run to diff against?
+    checks:
+      - question: An app cannot open the Intel GPU but an admin can. What should you check first?
+        options:
+          - Whether the app's user is in the render group.
+          - Model accuracy.
+          - Network bandwidth.
+          - Cooling.
+        answer: 0
+        explanation: Intel's driver docs require render-group access to DRM render nodes.
+      - question: Which command shows kernel driver messages?
+        options: [pip list, dmesg, python -V, ls]
+        answer: 1
+        explanation: dmesg prints the kernel ring buffer, including driver load errors.
+    sources: [intel-gpu-driver-install]
+
+  - id: software-layers
+    title: Drivers vs firmware vs runtimes vs frameworks vs applications
+    level: Beginner
+    minutes: 20
+    product_specific: true
+    summary: The five layers between a chip and a chatbot, and how each one fails.
+    explanation: |
+      From the bottom up:
+
+      1. **Firmware**: software that lives on the device itself and starts it up. Updated rarely, often by the server vendor.
+      2. **Kernel driver**: part of the operating system that lets Linux talk to the device.
+      3. **Runtime / user-space libraries**: the APIs programs use to send work to the device, for example Level Zero or OpenCL for Intel GPUs, or the Intel Gaudi software runtime.
+      4. **Framework**: PyTorch, OpenVINO, TensorFlow. It turns model code into device work, often through libraries such as oneDNN.
+      5. **Application / serving layer**: vLLM, a web service, a notebook.
+
+      **Each layer must match the ones next to it.** Intel publishes support matrices that tie them together; for example the Intel Gaudi Support Matrix lists firmware, driver, OS and PyTorch versions for each software release (1.24.2 pairs with PyTorch 2.13 on the check date).
+
+      Analogy: a delivery chain. Firmware is the truck engine, the driver is the truck driver's license, the runtime is the dispatch system, the framework is the logistics planner, and the app is the customer order. A wrong version anywhere stops the delivery.
+    why_it_matters: |
+      Version mismatch between these layers is the most common bring-up blocker. A TPM tracks the exact version of every layer and knows which team owns each one.
+    customer_example: |
+      Fictional *Litware Media* upgrades PyTorch on a Gaudi server without updating the Gaudi software stack, and training fails at import. Checking the Support Matrix shows the pair is not supported. The fix is to align versions, not to debug the model.
+    visual:
+      type: dot
+      caption: The software stack, bottom to top. Every layer has its own version.
+      source: |
+        digraph G {
+          rankdir=BT; node [shape=box, style=rounded];
+          FW [label="Firmware (on the device)"];
+          DRV [label="Kernel driver (OS)"];
+          RT [label="Runtime / libraries\n(Level Zero, OpenCL, Gaudi runtime)"];
+          FWK [label="Framework\n(PyTorch, OpenVINO) + oneDNN"];
+          APP [label="Application / serving\n(vLLM, service, notebook)"];
+          FW -> DRV -> RT -> FWK -> APP;
+        }
+    exercise:
+      label: Runs on a normal laptop
+      title: List the framework layer on your laptop
+      steps:
+        - Run the "Environment inventory" lab and look at the package list.
+        - Identify which items are frameworks and which are applications.
+      code: |
+        from importlib.metadata import version
+        for pkg in ["numpy", "pandas", "streamlit"]:
+            try: print(pkg, version(pkg))
+            except Exception: print(pkg, "not installed")
+      lab: lab-environment-inventory
+    expected_output: |
+      Illustrative (versions differ on your machine):
+        numpy 2.x.x
+        pandas 2.x.x
+        streamlit 1.x.x
+    interpretation: |
+      On a laptop you mostly see the framework and application layers. On accelerator servers, ask for all five layers.
+    misconceptions:
+      - "\"Updating the driver fixes everything.\" It can break the runtime or framework pairing."
+      - "\"Firmware and driver are the same.\" Firmware runs on the device; the driver runs in the OS."
+      - "\"The latest of everything is best.\" Supported combinations matter more than newest."
+    senior_questions:
+      - What are the exact firmware, driver, runtime, framework and app versions on the failing system?
+      - Is this combination listed in the official support matrix?
+      - Who owns each layer (customer IT, OEM, Intel, upstream community)?
+    checks:
+      - question: Which layer lives on the device itself?
+        options: [Framework, Firmware, Application, Runtime]
+        answer: 1
+        explanation: Firmware runs on the device and is managed separately from OS packages.
+      - question: A Gaudi server fails after a PyTorch upgrade. What is the best first evidence?
+        options:
+          - Compare installed versions against the Gaudi Support Matrix.
+          - Re-train the model.
+          - Replace the card.
+          - Add more RAM.
+        answer: 0
+        explanation: The Support Matrix lists which PyTorch version pairs with each Gaudi software release.
+    sources: [gaudi-support-matrix, intel-gpu-driver-install, onednn-repo]
+
+  - id: containers-vms
+    title: Containers vs virtual machines
+    level: Beginner
+    minutes: 15
+    product_specific: true
+    summary: Both package software; they differ in what they share with the host, which matters for accelerators.
+    explanation: |
+      - **Virtual machine (VM)**: a whole computer in software, with its own operating system and kernel. Strong isolation, heavier.
+      - **Container**: Docker's docs describe it as an isolated process with all the files it needs. Containers **share the host's kernel**. Lighter and faster to start.
+
+      Because containers share the host kernel, **the kernel driver for an accelerator lives on the host**, and the container needs access to the device files and matching user-space libraries. For Intel Gaudi, the documentation says the `habanalabs-container-runtime` package is required to run workloads in containers and is not installed automatically.
+
+      Analogy: a VM is a separate house with its own utilities; a container is an apartment sharing the building's plumbing (the kernel).
+    why_it_matters: |
+      Customers deploy in containers or Kubernetes. A model that works on bare metal may fail in a container because the device isn't passed through, the container runtime is missing, or the user-space libraries inside the image don't match the host driver.
+    customer_example: |
+      Fictional *Adventure Works* builds its own image, starts it on a Gaudi host and sees no devices. The container runtime package was never installed on the host. Following the official install guide fixes it.
+    visual:
+      type: table
+      caption: Containers vs VMs for accelerator work
+      columns: [Topic, Container, Virtual machine]
+      rows:
+        - [Kernel, Shared with host, Own guest kernel]
+        - [Accelerator driver, Installed on host, "Installed in guest, device passed through"]
+        - [Startup, Seconds, Minutes]
+        - [Typical issue, "Device not visible / library mismatch", "Passthrough or guest driver setup"]
+    exercise:
+      label: Runs on a normal laptop
+      title: Read a container command without running it
+      steps:
+        - Read the command below and label each part (image, device mapping, environment).
+        - Optional, if Docker is installed, run "docker run --rm hello-world" to see a container start.
+      code: |
+        # Display only. Example structure of a container run with a device mapped in:
+        docker run --rm -it \
+          --device /dev/dri \             # expose GPU render nodes (Intel GPU example)
+          -e MODEL_NAME=my-model \        # environment variable
+          my-registry/inference:1.0       # image and tag
+    expected_output: |
+      Not executed here. If you run hello-world yourself you should see "Hello from Docker!" text.
+    interpretation: |
+      The device mapping line is the part most often missing in "accelerator not found inside container" tickets.
+    misconceptions:
+      - "\"A container includes its own driver.\" The kernel driver is on the host."
+      - "\"If it works on bare metal it works in a container.\" Device access and libraries must be provided."
+      - "\"VMs and containers have the same overhead.\" VMs carry a full guest OS."
+    senior_questions:
+      - Bare metal, VM, container or Kubernetes in production?
+      - Which host driver version, and which library versions are inside the image?
+      - Is there an official base image for this stack and version?
+    checks:
+      - question: Why can't a container ship its own accelerator kernel driver?
+        options:
+          - Containers share the host kernel.
+          - Containers have no files.
+          - Drivers are illegal in containers.
+          - Containers only run on Windows.
+        answer: 0
+        explanation: Kernel drivers run in the shared host kernel, so they must be installed on the host.
+      - question: What does Intel Gaudi documentation say is required for containers?
+        options: [habanalabs-container-runtime, A VM, oneDNN, MRDIMM]
+        answer: 0
+        explanation: The docs state habanalabs-container-runtime is required and not installed automatically.
+    sources: [docker-container, gaudi-driver-install]
+
+  - id: ai-ml-lifecycle
+    title: "AI vs ML vs deep learning; training, fine-tuning, inference, evaluation"
+    level: Beginner
+    minutes: 15
+    product_specific: false
+    summary: The vocabulary for what a customer is actually trying to do with the hardware.
+    explanation: |
+      - **AI**: the broad goal of software doing tasks that seem intelligent.
+      - **Machine learning (ML)**: AI that learns patterns from data instead of hand-written rules.
+      - **Deep learning (DL)**: ML using large neural networks with many layers. LLMs are deep learning.
+
+      **The lifecycle:**
+
+      - **Training**: learning the model's parameters from a large dataset. Expensive, weeks on many devices.
+      - **Fine-tuning**: adjusting an existing model on a smaller, specific dataset.
+      - **Inference**: using a trained model to answer requests. This is what most enterprise customers run every day.
+      - **Evaluation**: measuring whether the model is good enough (accuracy, quality, safety) on test data.
+
+      Hardware needs differ: training stresses compute, memory and networking together; inference cares about latency, throughput and cost per request.
+    why_it_matters: |
+      Customers often say "we want to do AI." Your first discovery step is finding out which of these four activities they need, because it changes the hardware, software and success metrics.
+    customer_example: |
+      Fictional *Margie's Travel* thinks they need a training cluster. Discovery shows they want to answer customer questions with an existing open model plus their documents (inference + retrieval). The POC becomes much smaller and faster.
+    visual:
+      type: dot
+      caption: Model lifecycle
+      source: |
+        digraph G { rankdir=LR; node [shape=box, style=rounded];
+          D [label="Data"]; T [label="Training"]; F [label="Fine-tuning"]; E [label="Evaluation"]; I [label="Inference\n(production)"];
+          D -> T -> F -> E -> I; I -> E [label="monitor quality", style=dashed]; }
+    exercise:
+      label: Runs on a normal laptop
+      title: Classify customer requests
+      steps:
+        - Read five fictional requests in the Practical Labs "Classify the workload" lab.
+        - Label each one training, fine-tuning, inference or evaluation.
+      lab: lab-classify-workload
+    expected_output: |
+      The lab scores your answers and explains each one. Typical result for a first try is 3-4 out of 5.
+    interpretation: |
+      If most requests are inference, measure latency/throughput/cost. If training, plan for multi-device scaling and data pipelines.
+    misconceptions:
+      - "\"AI and ML are interchangeable.\" ML is one way to build AI."
+      - "\"Every customer needs to train a model.\" Most use pre-trained models for inference."
+      - "\"Evaluation is a one-time step.\" Quality must be re-checked after every change (for example quantization)."
+    senior_questions:
+      - Which lifecycle stage is in scope for this POC, and which is out?
+      - What dataset and metric define "good enough" for evaluation?
+      - How often will the model be retrained or replaced?
+    checks:
+      - question: A customer runs an existing model to answer user questions. Which stage is this?
+        options: [Training, Fine-tuning, Inference, Data labeling]
+        answer: 2
+        explanation: Using a trained model to answer requests is inference.
+      - question: Why does evaluation need repeating after quantization?
+        options:
+          - Quantization can change model accuracy.
+          - Quantization deletes test data.
+          - It doesn't need repeating.
+          - Evaluation sets the batch size.
+        answer: 0
+        explanation: Lower precision can shift outputs; you must confirm quality stays within agreed limits.
+    sources: [academy-original]
+
+  - id: tensors-precision-quantization
+    title: Tensors, parameters, precision and quantization
+    level: Beginner
+    minutes: 25
+    product_specific: true
+    summary: Why "7B at BF16" tells you roughly 14 GB before anyone runs anything.
+    explanation: |
+      - **Tensor**: a grid of numbers (a list, a table, or a stack of tables). All model data are tensors.
+      - **Parameters (weights)**: the learned numbers inside the model. "7B" means about 7 billion parameters.
+      - **Precision**: how many bits each number uses.
+        - FP32 = 4 bytes, BF16/FP16 = 2 bytes, FP8/INT8 = 1 byte, INT4 = 0.5 byte.
+      - **Quantization**: storing or computing with lower precision to save memory and speed things up, at some risk to accuracy.
+
+      **Rule of thumb:** weight memory ≈ parameters × bytes per parameter. A 7B model at BF16 ≈ 7×10⁹ × 2 bytes = 14 GB (decimal). That excludes KV cache and runtime overhead.
+
+      Hardware supports different precisions. For example, the Gaudi 3 OAM brief lists FP8, BF16, FP16, TF32 and FP32. Always check the specific product and software release for what is actually supported for your operator and model.
+    why_it_matters: |
+      Precision choices change memory fit, speed and accuracy all at once. A TPM must make sure every benchmark states the precision, and that accuracy is re-validated after quantization.
+    customer_example: |
+      Fictional *Proseware* reports a speed-up after moving from BF16 to INT8 but did not re-run their accuracy test. Two weeks later a business user notices worse answers. The TPM adds "accuracy within agreed tolerance at chosen precision" as a POC gate.
+    visual:
+      type: table
+      caption: "Weight memory for a 7-billion-parameter model (arithmetic, excludes KV cache and overhead)"
+      columns: [Precision, Bytes per parameter, "Weights (GB, decimal)"]
+      rows:
+        - [FP32, "4", "28"]
+        - [BF16 / FP16, "2", "14"]
+        - [FP8 / INT8, "1", "7"]
+        - [INT4, "0.5", "3.5"]
+    exercise:
+      label: Runs on a normal laptop
+      title: Quantize an array and measure the error
+      steps:
+        - Run the "Quantization error" lab.
+        - Compare memory size and average error for FP32 vs INT8 vs INT4-style rounding.
+      code: |
+        import numpy as np
+        x = np.random.default_rng(0).normal(size=100_000).astype(np.float32)
+        scale = np.abs(x).max() / 127
+        q = np.round(x / scale).astype(np.int8)
+        err = np.abs(q.astype(np.float32) * scale - x).mean()
+        print(x.nbytes, q.nbytes, round(float(err), 5))
+      lab: lab-quantization-error
+    expected_output: |
+      Measured in-app when you run the lab. With seed 0 you should see 400000 bytes vs 100000 bytes and a small mean error (about 0.009).
+    interpretation: |
+      Memory drops 4x; error is small but not zero. Whether that error matters can only be answered by the model's own accuracy test.
+    misconceptions:
+      - "\"Quantization is free speed.\" It can reduce accuracy and not every operator supports every precision."
+      - "\"INT8 always runs faster.\" Only if the hardware and software path has fast INT8 kernels for those operators."
+      - "\"GB and GiB are the same.\" 14 GB = about 13.04 GiB; say which unit you use."
+    senior_questions:
+      - What precision did each benchmark run use, for weights and for activations?
+      - What accuracy test and tolerance were agreed before quantizing?
+      - Is the precision supported for every operator in this model on this software release?
+    checks:
+      - question: About how much memory do the weights of a 13B model need at FP16?
+        options: [6.5 GB, 13 GB, 26 GB, 52 GB]
+        answer: 2
+        explanation: 13×10⁹ parameters × 2 bytes = 26 GB (decimal), before KV cache and overhead.
+      - question: What must happen after a model is quantized for a POC?
+        options:
+          - Re-run the agreed accuracy evaluation.
+          - Nothing, quantization is lossless.
+          - Increase the batch size.
+          - Change the network.
+        answer: 0
+        explanation: Lower precision can change outputs, so accuracy must be re-validated.
+    sources: [gaudi3-oam-brief, academy-original]
+
+  - id: transformers-tokens-rag
+    title: Transformers, tokens, context windows, embeddings and RAG
+    level: Beginner
+    minutes: 25
+    product_specific: false
+    summary: The moving parts of a modern LLM application in plain English.
+    explanation: |
+      - **Transformer**: the neural network design behind modern LLMs (from the 2017 paper "Attention Is All You Need"). Its key trick, *attention*, lets each word look at every other word.
+      - **Token**: the unit a model reads and writes, often a word piece. In English, a rough rule is about 3/4 of a word per token, but it depends on the tokenizer and language.
+      - **Context window**: the maximum number of tokens (prompt + output) the model can handle at once.
+      - **Embedding**: a list of numbers that represents the meaning of text. Similar meanings have nearby embeddings.
+      - **RAG (retrieval-augmented generation)**: find relevant documents using embeddings, paste them into the prompt, then let the LLM answer. This adds company knowledge without retraining.
+
+      RAG has more parts than "just the model": an embedding model, a vector database, a retriever, and the LLM. Each has its own performance and hardware profile.
+    why_it_matters: |
+      Longer prompts (for example RAG with many documents) mean more input tokens, more memory and more latency before the first token. Token counts drive both performance and cost estimates.
+    customer_example: |
+      Fictional *Coho Winery* builds a RAG assistant. Retrieval adds 3,000 tokens of documents to every prompt. Their latency target was set assuming 200-token prompts. The TPM resets the benchmark to the real input length.
+    visual:
+      type: dot
+      caption: A simple RAG flow
+      source: |
+        digraph G { rankdir=LR; node [shape=box, style=rounded];
+          Q [label="User question"]; E [label="Embedding model"]; V [label="Vector database\n(company docs)"]; P [label="Prompt =\nquestion + retrieved docs"]; L [label="LLM"]; A [label="Answer"];
+          Q -> E -> V -> P -> L -> A; Q -> P; }
+    exercise:
+      label: Runs on a normal laptop
+      title: Count tokens and see how prompts grow
+      steps:
+        - Run the "Token counting" lab and paste a paragraph.
+        - Add a few "retrieved documents" and watch the input length grow.
+      lab: lab-token-counting
+    expected_output: |
+      The lab uses a simple word-piece approximation (not a real tokenizer) and labels its counts as estimates.
+    interpretation: |
+      Real tokenizers differ by model. For POCs, measure tokens with the customer's actual tokenizer.
+    misconceptions:
+      - "\"Tokens are words.\" They are often pieces of words, and the ratio varies."
+      - "\"A bigger context window is free.\" Longer inputs cost memory and prefill time."
+      - "\"RAG means retraining.\" RAG adds documents to the prompt at request time."
+    senior_questions:
+      - What are the real input and output token length distributions?
+      - Which components (embedding, retrieval, LLM) are in the latency budget?
+      - Which tokenizer was used to count tokens in the benchmark?
+    checks:
+      - question: What does RAG add to a request?
+        options:
+          - Retrieved documents placed into the prompt.
+          - A new training run.
+          - More GPUs.
+          - A larger context window.
+        answer: 0
+        explanation: RAG retrieves relevant text and includes it in the prompt.
+      - question: Why should a POC measure tokens with the customer's tokenizer?
+        options:
+          - Token counts per word differ by tokenizer and language.
+          - Tokenizers set network speed.
+          - It is required by law.
+          - It doesn't matter.
+        answer: 0
+        explanation: Different tokenizers split text differently, changing lengths, memory and cost.
+    sources: [arxiv-attention, academy-original]
+
+  - id: prefill-decode-kv
+    title: Prefill, decode, KV cache, batching and concurrency
+    level: Beginner
+    minutes: 25
+    product_specific: false
+    summary: The two phases of LLM inference, and the memory that grows with every token.
+    explanation: |
+      LLM inference has two phases:
+
+      1. **Prefill**: the model reads the whole prompt at once. Lots of math in parallel, so it tends to be *compute-bound*. Its time shows up as **time to first token (TTFT)**.
+      2. **Decode**: the model writes one token at a time. Each step reads the weights again for little math, so it tends to be *memory-bandwidth-bound*. Its pace shows up as **inter-token latency**.
+
+      **KV cache**: during generation the model saves "keys and values" for every past token so it does not recompute them. It grows with sequence length and number of concurrent requests and can use as much memory as the weights. The PagedAttention paper (vLLM) showed that managing this memory well lets you batch more requests.
+
+      **Batching**: processing several requests together so each weight read serves many users. **Concurrency**: how many requests are in flight at once. More concurrency usually increases total throughput but also each user's latency.
+
+      Analogy: a bus. Prefill is boarding (everyone at once), decode is each stop. A fuller bus (bigger batch) moves more people per trip but each passenger's ride gets a bit longer.
+    why_it_matters: |
+      Customers mix up "fast for one user" and "lots of users at once." You need to know which phase and which metric the customer cares about, and that KV cache memory limits how many users fit.
+    customer_example: |
+      Fictional *Wide World Importers* reports great single-user speed but timeouts at 50 users. The KV cache for 50 long conversations didn't fit, so requests queued. The fix was a concurrency limit and shorter max context, chosen with evidence.
+    visual:
+      type: table
+      caption: Prefill vs decode
+      columns: [Phase, What happens, Usually limited by, Metric]
+      rows:
+        - [Prefill, Whole prompt processed in parallel, Compute, TTFT]
+        - [Decode, One token per step for each request, Memory bandwidth, Inter-token latency / TPOT]
+    exercise:
+      label: Simulation only
+      title: Watch latency and throughput trade off as batch grows
+      steps:
+        - Open Performance Playground > Throughput vs latency.
+        - Increase concurrency from 1 to 64 and note aggregate tokens/s vs per-user tokens/s.
+      lab: lab-batching-sim
+    expected_output: |
+      Simulated data: aggregate tokens/s rises then flattens; per-user tokens/s falls. Not a measurement of any device.
+    interpretation: |
+      Pick the operating point that meets the customer's latency target, then report throughput at that point, not the peak.
+    misconceptions:
+      - "\"Throughput and latency improve together.\" Past a point, more batching hurts latency."
+      - "\"KV cache is small.\" For long contexts and many users it can rival the weights."
+      - "\"TTFT measures generation speed.\" TTFT is mostly prefill and queueing."
+    senior_questions:
+      - What latency target per user and what concurrency must be met at the same time?
+      - What max context length and output length were configured?
+      - How much device memory is left for KV cache after weights?
+    checks:
+      - question: Which phase mostly determines time to first token?
+        options: [Decode, Prefill (plus queueing), Evaluation, Training]
+        answer: 1
+        explanation: TTFT covers waiting plus processing the prompt (prefill).
+      - question: What usually happens to per-user token speed as concurrency increases a lot?
+        options: [It rises, It falls, It stays exactly the same, It becomes zero]
+        answer: 1
+        explanation: Each user shares the device with more requests, so their individual pace drops while total throughput rises.
+    sources: [arxiv-pagedattention, vllm-bench-cli]

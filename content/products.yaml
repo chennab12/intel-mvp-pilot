@@ -1,0 +1,162 @@
+# Intel Product Explorer. Only facts present in the cited sources appear here.
+# status: available | announced | historical | deprecated | unverified
+# category: CPU | GPU | AI accelerator | Client SoC | Networking | Software
+products:
+  - id: xeon-6
+    name: Intel Xeon 6 processors (P-core SKUs, formerly Granite Rapids)
+    category: CPU
+    segment: Data center
+    status: available
+    example_sku: Intel Xeon 696X
+    key_facts:
+      - "Xeon 696X (ARK): 64 P-cores / 128 threads, 336 MB cache, 350 W TDP."
+      - "Memory: DDR5-6400 or MRDIMM-8000, 8 channels (Xeon 696X)."
+      - "PCIe 5.0, 128 lanes (Xeon 696X)."
+      - "Intel AMX: Yes; AVX-512: Yes (Xeon 696X)."
+    ai_role: Host CPU for accelerator servers; CPU inference with AMX for suitable workloads; retrieval, pre/post-processing.
+    software: [PyTorch (CPU), OpenVINO CPU device, oneDNN]
+    tpm_notes: Specs vary by SKU; always look up the exact SKU on ARK. Record NUMA layout and memory population in every CPU benchmark.
+    caveats: Vendor MRDIMM bandwidth claims on the solution brief don't name configurations; treat as claims.
+    sources: [ark-xeon-696x, intel-amx-overview, intel-xeon6-mrdimm-brief]
+
+  - id: arc-pro-b60
+    name: Intel Arc Pro B60
+    category: GPU
+    segment: Workstation / departmental
+    status: available
+    example_sku: Arc Pro B60 (partner-branded cards)
+    key_facts:
+      - "24 GB GDDR6, 192-bit, up to 456 GB/s."
+      - "20 Xe-cores, 160 XMX engines (Xe2-HPG)."
+      - "PCIe 5.0 x16 connector, x8 electrical."
+      - "120-200 W TBP (Intel reference; partner designs vary)."
+    ai_role: Inference of models that fit in 24 GB per card; multi-card workstation setups.
+    software: [Intel GPU driver, Level Zero / OpenCL, PyTorch XPU, OpenVINO GPU, vLLM XPU backend]
+    tpm_notes: "Codename check: \"B60\" maps to the commercial Arc Pro B60 per Intel's datasheet. Intel-branded version is not for sale; partner cards vary."
+    caveats: Partner board power and cooling vary; confirm the exact partner card.
+    sources: [arc-pro-b60-datasheet, pytorch-xpu-get-started, vllm-gpu-install]
+
+  - id: arc-pro-b70
+    name: Intel Arc Pro B70
+    category: GPU
+    segment: Workstation / departmental
+    status: available
+    example_sku: Arc Pro B70
+    key_facts:
+      - "32 GB GDDR6, 256-bit, 608 GB/s."
+      - "32 Xe-cores, 256 XMX engines."
+      - "230 W TBP (range 160-290 W); PCIe 5.0 x16."
+      - "Launched Q1'26 per ARK."
+    ai_role: Inference of models that fit in 32 GB per card.
+    software: [Intel GPU driver, Level Zero / OpenCL, PyTorch XPU, OpenVINO GPU, vLLM XPU backend]
+    tpm_notes: "Codename check: \"B70\" maps to the commercial Arc Pro B70 on ARK (verified 2026-10-20). Confirm framework support for B70 specifically in each framework's docs; the PyTorch page lists Arc B-Series generally."
+    caveats: PyTorch and vLLM docs list GPU families, not every SKU.
+    sources: [ark-arc-pro-b70, pytorch-xpu-get-started, vllm-gpu-install]
+
+  - id: crescent-island
+    name: Intel GPU D-series, code-named Crescent Island
+    category: GPU
+    segment: Data center (inference)
+    status: announced
+    example_sku: None published on pages checked
+    key_facts:
+      - "Announced at the 2025 OCP Global Summit: Xe3P, 160 GB LPDDR5X, for AI inference in air-cooled servers."
+      - "2025 announcement: customer sampling expected in the second half of 2026 (a plan)."
+      - "October 2026 Intel page caption: up to 480 GB LPDDR5X, 1.5 TB/s, 1.3 petaflops FP8 (vendor figures)."
+    ai_role: Announced inference-focused data center GPU.
+    software: [Needs verification - no supported framework list published on pages checked]
+    tpm_notes: "Two official pages give different memory figures (160 GB in 2025, up to 480 GB in 2026). Don't quote specs, dates or SKUs to customers without the current official page; treat as announced roadmap, not a commitment."
+    caveats: No SKU, availability date or software support matrix found on the pages checked.
+    sources: [intel-crescent-island-2025, intel-ocp-2026]
+
+  - id: dc-gpu-max
+    name: Intel Data Center GPU Max Series (Ponte Vecchio)
+    category: GPU
+    segment: Data center / HPC
+    status: unverified
+    example_sku: n/a
+    key_facts:
+      - "PyTorch's Intel GPU page (checked 2026-10-20) lists it as supported data center hardware."
+      - "Intel's driver guide covers Max Series on Ubuntu Server, RHEL and SLES."
+      - "Third-party report (Phoronix, 2025-10-11): XPU Manager 1.3.3 treats Max and Flex as deprecated."
+    ai_role: Existing installed base in HPC/AI systems.
+    software: [Intel GPU driver, Level Zero, PyTorch XPU]
+    tpm_notes: Lifecycle status is unverified. Tool support and framework support can differ; confirm Intel's official lifecycle notice before advising on new deployments.
+    caveats: The deprecation report is third-party and covers one tool, not the product line.
+    sources: [pytorch-xpu-get-started, intel-gpu-driver-install, phoronix-xpu-manager]
+
+  - id: gaudi-3
+    name: Intel Gaudi 3 AI accelerator
+    category: AI accelerator
+    segment: Data center (training and inference)
+    status: available
+    example_sku: HL-338 PCIe card, HL-325L OAM card, HLB-325 baseboard
+    key_facts:
+      - "128 GB HBM2e, 3.7 TB/s (HL-338 and HL-325L)."
+      - "HL-338 PCIe: 8 MME, 64 TPC, 96 MB SRAM, 600 W, air-cooled, double-width."
+      - "HL-325L OAM: 24 x 200 GbE RoCE v2 ports, up to 900 W."
+      - "Data types listed: FP8, BF16, FP16, TF32, FP32."
+    ai_role: Large-model training and inference with integrated Ethernet scale-out.
+    software: [Gaudi firmware + driver, Intel Gaudi software (1.24.2 on check date), PyTorch (2.13 for 1.24.2), vllm-gaudi plugin]
+    tpm_notes: Separate software ecosystem from Intel GPUs. Always check the Gaudi Support Matrix for OS, firmware and PyTorch pairing.
+    caveats: Product page performance figures vs Gaudi 2 are vendor claims.
+    sources: [gaudi3-pcie-brief, gaudi3-oam-brief, intel-gaudi-products, gaudi-support-matrix, vllm-gaudi-repo]
+
+  - id: gaudi-2
+    name: Intel Gaudi 2 AI accelerator
+    category: AI accelerator
+    segment: Data center
+    status: unverified
+    example_sku: HL-225H (listed in Support Matrix)
+    key_facts:
+      - "Still listed in the Intel Gaudi Support Matrix for software 1.24.2 (HL-225H, HLBA-225, HLS-Gaudi 2)."
+    ai_role: Installed base; comparison baseline on Intel's Gaudi page.
+    software: [Intel Gaudi software (same matrix as Gaudi 3)]
+    tpm_notes: Software support is verified; commercial availability for new orders was not checked.
+    caveats: Availability for new purchases not verified.
+    sources: [gaudi-support-matrix, intel-gaudi-products]
+
+  - id: core-ultra-s3
+    name: Intel Core Ultra Series 3 (Panther Lake)
+    category: Client SoC
+    segment: Client / edge
+    status: available
+    example_sku: Varies (see ARK)
+    key_facts:
+      - "Commercial PCs with Core Ultra Series 3 and vPro available from 2026-03-31 (Intel Newsroom)."
+      - "Combines CPU, Xe3 GPU and NPU (NPU TOPS per SKU: third-party report of 46-50, needs verification on ARK)."
+      - "PyTorch XPU page lists Panther Lake among supported client GPUs."
+    ai_role: On-device inference on CPU, GPU or NPU.
+    software: [OpenVINO (CPU/GPU/NPU devices), PyTorch XPU for the GPU]
+    tpm_notes: Driver versions across a PC fleet are a common risk; OpenVINO 2026.4.1 notes an NPU crash fix on Core Ultra Series 3 for certain Windows NPU driver versions.
+    caveats: TOPS figures here are unverified; vendor "up to 4x AI performance" claim compares against four-year-old systems.
+    sources: [intel-core-ultra-s3-vpro, liliputing-panther-lake, pytorch-xpu-get-started, openvino-releases]
+
+  - id: ipex
+    name: Intel Extension for PyTorch (IPEX)
+    category: Software
+    segment: Data center and client
+    status: deprecated
+    example_sku: n/a
+    key_facts:
+      - "End of life by the end of March 2026 (Intel notice)."
+      - "Intel recommends using native PyTorch, which includes Intel CPU and GPU support."
+    ai_role: Historical extension for Intel optimizations in PyTorch.
+    software: [Replace with native PyTorch (CPU / XPU)]
+    tpm_notes: Customer code and tutorials using IPEX need a migration plan; add it to dependency registers.
+    caveats: None.
+    sources: [ipex-eol, pytorch-xpu-get-started]
+
+  - id: intel-ethernet
+    name: Intel Ethernet adapters
+    category: Networking
+    segment: Data center networking
+    status: unverified
+    example_sku: Needs verification
+    key_facts:
+      - "Not verified in this release of the app. No speeds or models are quoted."
+    ai_role: Host networking for scale-out and storage.
+    software: [Needs verification]
+    tpm_notes: Record NIC model, firmware and driver in inventories regardless of vendor.
+    caveats: Entry exists to show the manual verification workflow.
+    sources: [intel-ethernet-unverified]

@@ -1,0 +1,424 @@
+path: intel-judgment
+lessons:
+  - id: workload-to-platform
+    title: From workload characteristics to platform choice
+    level: Working TPM
+    minutes: 25
+    product_specific: true
+    summary: Start from the workload, not the product catalog.
+    explanation: |
+      Platform selection is a funnel. Ask about the workload first:
+
+      1. **Task**: training, fine-tuning or inference? Batch (offline) or interactive?
+      2. **Model**: size in parameters, architecture, precision the customer will accept.
+      3. **Traffic**: concurrent users, input/output token lengths, latency targets (P95, not average).
+      4. **Deployment constraints**: data center vs client/edge, power and cooling, rack space, existing servers, OEM preference, operating system, container platform.
+      5. **Software constraints**: required frameworks, serving engine, model formats, security rules.
+      6. **Economics**: budget, cost per request, timeline.
+
+      Then map to candidates, for example:
+
+      - Moderate inference on existing servers: Xeon with AMX may be a candidate (verify the SKU on ARK).
+      - Workstation or departmental inference that fits in 24-32 GB: Arc Pro B-Series cards are candidates (B60 24 GB, B70 32 GB per Intel specs).
+      - Large-model training or high-throughput inference with large memory needs: Gaudi 3 (128 GB HBM2e per card) is a candidate.
+      - On-device, low-power inference: Core Ultra NPU via OpenVINO.
+
+      These are starting hypotheses to test, not recommendations. Software support for the specific model must be checked for every candidate.
+    why_it_matters: |
+      Customers who start with "which chip" end up in POCs that test the wrong thing. A TPM who runs the funnel produces a short candidate list, a test plan, and fewer surprises.
+    customer_example: |
+      Fictional *Blue Yonder Clinics* asks for "the fastest Intel accelerator." Discovery shows: a 8B-parameter model, 30 concurrent users, P95 TTFT under 1 second, air-cooled racks, Kubernetes. That rules out options needing liquid cooling and narrows the test to two candidates the POC will actually measure.
+    visual:
+      type: table
+      caption: Workload characteristic -> what it pushes on
+      columns: [Characteristic, Pushes on, Ask]
+      rows:
+        - [Large model, Device memory capacity, "Parameters and precision?"]
+        - [Long prompts, Prefill compute + KV memory, "Input token distribution?"]
+        - [Many concurrent users, KV memory + batching, "Concurrency at peak?"]
+        - [Strict latency, Per-request speed + queueing, "P95/P99 targets?"]
+        - [Multi-device training, Interconnect + networking, "Scaling efficiency needed?"]
+        - [Edge/client, Power + device support, "Battery, OS, form factor?"]
+    exercise:
+      label: Simulation only
+      title: Qualify a workload in the POC Simulator
+      steps:
+        - Play the "Northwind chatbot sizing" scenario in Customer POC Simulator.
+        - Note which questions unlocked the most evidence.
+      lab: lab-qualification-checklist
+    expected_output: |
+      The simulator shows a score for reasoning and completeness, and lists which required evidence you collected.
+    interpretation: |
+      High completeness with low reasoning means you asked everything but didn't prioritize; work on asking the decision-driving questions first.
+    misconceptions:
+      - "\"Peak TOPS/FLOPS decides the winner.\" Memory, software support and the latency target usually decide first."
+      - "\"One platform fits all workloads.\" Customers often need a mix (for example CPU for retrieval, accelerator for the LLM)."
+      - "\"Spec sheets tell you performance.\" Only measured results on the real workload do."
+    senior_questions:
+      - What is the single metric that would make the customer choose one option over another?
+      - Which constraints are hard (cooling, OS) versus negotiable (model choice)?
+      - What would we need to see in the POC to rule a candidate out?
+    checks:
+      - question: What should come first in platform selection?
+        options:
+          - The newest product.
+          - Workload characteristics and constraints.
+          - Peak TFLOPS.
+          - The customer's favorite vendor.
+        answer: 1
+        explanation: Workload and constraints define what to test; products are hypotheses.
+      - question: A workload has many concurrent long conversations. Which resource is likely to bind first?
+        options: [Disk space, KV-cache memory, Keyboard input, Display output]
+        answer: 1
+        explanation: KV cache grows with sequence length times concurrent requests.
+    sources: [ark-xeon-696x, arc-pro-b60-datasheet, ark-arc-pro-b70, gaudi3-pcie-brief, openvino-devices]
+
+  - id: host-accelerator-cooperation
+    title: How host CPUs and accelerators cooperate
+    level: Working TPM
+    minutes: 20
+    product_specific: true
+    summary: The accelerator does the math; the host CPU still feeds it, schedules it and runs everything else.
+    explanation: |
+      Even in an accelerator server, the **host CPU** (for example Xeon) does a lot:
+
+      - Runs the OS, drivers, container runtime and the serving engine's scheduler.
+      - Tokenizes text, prepares batches, launches work on the device.
+      - Moves data over PCIe between host memory and device memory.
+      - Runs pre/post-processing, retrieval and business logic.
+
+      If the host is too slow, too small or badly configured (wrong NUMA node, too few cores per accelerator), the accelerator sits idle waiting. Engineers call this being "host-bound."
+
+      Platform specs matter here: the Xeon 696X ARK page lists 128 PCIe 5.0 lanes, which bounds how many cards can attach at full width. The Arc Pro B60 has an x16 connector with x8 electrical lanes.
+    why_it_matters: |
+      Customers often focus only on the accelerator. When utilization is low, the cause may be the host. TPMs make sure server configuration (CPU, memory, PCIe topology, NUMA alignment) is part of the POC inventory.
+    customer_example: |
+      Fictional *Alpine Ski House* sees low accelerator utilization. Profiling shows tokenization and request handling saturating a few host cores. Increasing host threads and moving preprocessing helps more than any accelerator setting.
+    visual:
+      type: dot
+      caption: One inference request through a host + accelerator server
+      source: |
+        digraph G { rankdir=LR; node [shape=box, style=rounded];
+          R [label="Request"]; H [label="Host CPU\n(tokenize, schedule,\nbatch)"]; P [label="PCIe"]; A [label="Accelerator\n(model math,\nKV cache)"]; O [label="Host CPU\n(detokenize,\nrespond)"];
+          R -> H -> P -> A -> P2 [label=""]; P2 [label="PCIe"]; P2 -> O; }
+    exercise:
+      label: Runs on a normal laptop
+      title: Find the slow stage in a pipeline
+      steps:
+        - Run the "Pipeline bottleneck" lab. It times three stages of a toy pipeline on your machine.
+        - Identify which stage dominates and what changing it would do.
+      lab: lab-pipeline-bottleneck
+    expected_output: |
+      Measured in-app. Stage times differ per machine; the lab highlights the largest share.
+    interpretation: |
+      Speeding up a stage that is not the largest share barely changes total time. This is the same logic you use when an accelerator is idle.
+    misconceptions:
+      - "\"The host CPU doesn't matter in an accelerator server.\" It feeds and schedules the accelerator."
+      - "\"Low utilization means the accelerator is slow.\" It may be waiting for the host."
+      - "\"PCIe is never the bottleneck.\" Frequent host-device transfers can dominate."
+    senior_questions:
+      - How many host cores and how much host memory per accelerator?
+      - Are accelerators and their NICs on the same NUMA node as the host process?
+      - What is accelerator utilization during the benchmark, and what is the host doing?
+    checks:
+      - question: An accelerator shows low utilization during serving. Which is a plausible cause?
+        options:
+          - The host CPU can't prepare and launch work fast enough.
+          - The model is too accurate.
+          - The context window is too small.
+          - Firmware is too new.
+        answer: 0
+        explanation: Host-bound pipelines leave accelerators waiting.
+      - question: Why does the PCIe lane count on a server CPU matter for accelerators?
+        options:
+          - It limits how many devices can attach at full link width.
+          - It sets model accuracy.
+          - It decides the precision.
+          - It doesn't matter.
+        answer: 0
+        explanation: Each card consumes lanes; fewer lanes means narrower links or fewer cards.
+    sources: [ark-xeon-696x, arc-pro-b60-datasheet]
+
+  - id: reading-specs-matrices
+    title: Reading product specifications and compatibility matrices
+    level: Working TPM
+    minutes: 25
+    product_specific: true
+    summary: How to read ARK pages, product briefs and support matrices without over-reading them.
+    explanation: |
+      **Three kinds of documents:**
+
+      1. **Specification pages (Intel ARK, datasheets)**: hardware facts such as cores, memory, bandwidth, power, PCIe. They describe *peak capabilities*, not your workload's speed.
+      2. **Product briefs and marketing pages**: include vendor claims ("up to 4x...") with footnotes about configurations. Treat claims as hypotheses; read the footnotes.
+      3. **Support / compatibility matrices**: which OS, firmware, driver, framework and model versions are validated together. The Intel Gaudi Support Matrix is a good example: release 1.24.2 lists PyTorch 2.13 and specific OS versions.
+
+      **How to read them well:**
+
+      - Note the exact SKU or card variant (Gaudi 3 HL-338 PCIe is 600 W; HL-325L OAM is up to 900 W).
+      - Note the date and version of the document.
+      - Separate "listed as supported" from "validated for this model" from "might work."
+      - When two official sources disagree, record both and ask the owning team. Example: Intel's 2025 Crescent Island announcement said 160 GB LPDDR5X, while an October 2026 Intel page caption says up to 480 GB. Both are announcements of a product that, per those pages, had not been described as shipping.
+    why_it_matters: |
+      Customers will quote numbers back to you. A TPM who cites the exact document, version and date avoids promising what was never validated.
+    customer_example: |
+      Fictional *Trey Research* quotes a vendor "up to" claim as the expected POC result. The TPM points to the footnote configuration, explains it differs from the customer's workload, and sets a target based on a measured baseline instead.
+    visual:
+      type: table
+      caption: Spec vs claim vs matrix
+      columns: [Document type, Tells you, Does not tell you]
+      rows:
+        - ["Spec sheet / ARK", "Peak hardware capabilities", "Your workload's performance"]
+        - ["Product brief claim", "What the vendor measured in a stated config", "Results in your config"]
+        - ["Support matrix", "Validated version combinations", "That every model/operator works"]
+    exercise:
+      label: Runs on a normal laptop
+      title: Extract facts from a support matrix
+      steps:
+        - Open the Intel Gaudi Support Matrix link in Sources.
+        - Write down the software version, PyTorch version and one supported OS.
+        - Compare with the values in this app's source registry and note the check date.
+    expected_output: |
+      On 2026-10-20 the page listed Intel Gaudi software 1.24.2 with PyTorch 2.13. If it shows a newer release when you check, the registry needs updating.
+    interpretation: |
+      A difference between the live page and this app is expected over time. That's what the source registry's review workflow is for.
+    misconceptions:
+      - "\"If ARK lists it, my model will run.\" ARK is hardware; software support is separate."
+      - "\"'Up to' claims are typical results.\" They are best cases in a stated configuration."
+      - "\"Matrices never change.\" They change every release; always note the version."
+    senior_questions:
+      - Which exact SKU, card variant and software release are we talking about?
+      - Is this combination validated, or are we extrapolating?
+      - What is the date and version of the document we're quoting?
+    checks:
+      - question: A product brief says "up to 4x" versus a previous generation. How should you use it?
+        options:
+          - As the expected POC result.
+          - As a vendor claim to test, reading its footnoted configuration.
+          - Ignore it entirely.
+          - Double it for safety.
+        answer: 1
+        explanation: Claims describe a specific configuration. Your workload needs its own measurement.
+      - question: Which document tells you which PyTorch version pairs with Intel Gaudi software 1.24.2?
+        options: [Intel ARK, The Gaudi Support Matrix, A news article, The customer's slide deck]
+        answer: 1
+        explanation: The Support Matrix lists validated version combinations.
+    sources: [gaudi-support-matrix, gaudi3-pcie-brief, gaudi3-oam-brief, intel-crescent-island-2025, intel-ocp-2026, intel-gaudi-products]
+
+  - id: tracing-software-stack
+    title: Tracing a workload through the software stack (and why ports need changes)
+    level: Working TPM
+    minutes: 30
+    product_specific: true
+    summary: The same PyTorch model takes a different path on Xeon, Intel GPU, Gaudi and NPU.
+    explanation: |
+      Take one model served with vLLM and trace the path:
+
+      | Layer | Intel GPU (Arc Pro, Data Center GPU) | Intel Gaudi |
+      |---|---|---|
+      | Serving | vLLM with the XPU backend (Linux; vllm-xpu-kernels needs Python 3.12 per vLLM docs) | vLLM + **vllm-gaudi** hardware plugin |
+      | Framework | Native PyTorch XPU (`torch.xpu`) | PyTorch with the Intel Gaudi bridge |
+      | Runtime | Level Zero / OpenCL user-space | Intel Gaudi software runtime |
+      | Driver | Intel GPU kernel driver | Gaudi driver (installed with habanalabs-installer.sh) |
+
+      On Xeon CPU, PyTorch and OpenVINO use oneDNN kernels. On a Core Ultra NPU, the usual path is OpenVINO's NPU device.
+
+      **Why models need changes when moving:**
+
+      - Device names differ (`cuda`, `xpu`, Gaudi's own device), so code with hard-coded device strings breaks.
+      - Custom operators/kernels written for one vendor don't exist on another.
+      - Supported precisions and quantization formats differ.
+      - Serving engines have per-backend feature gaps.
+      - Libraries change: Intel says Intel Extension for PyTorch reached end of life by end of March 2026 and recommends native PyTorch, so older tutorials using IPEX need updating.
+    why_it_matters: |
+      "Port this model to Intel" is never one task. Tracing the stack shows which layers need work and which team owns each change, which becomes your dependency plan.
+    customer_example: |
+      Fictional *Lucerne Publishing* has a CUDA-only custom attention kernel. On Intel GPU and Gaudi the model fails at that operator. The plan becomes: use a supported attention implementation in the serving engine, validate accuracy, then benchmark. The TPM tracks the kernel replacement as a separate dependency.
+    visual:
+      type: dot
+      caption: Same model, different stacks
+      source: |
+        digraph G { rankdir=TB; node [shape=box, style=rounded];
+          M [label="Model + vLLM"];
+          M -> X1 [label="Intel GPU"]; X1 [label="vLLM XPU backend"]; X1 -> X2; X2 [label="PyTorch XPU"]; X2 -> X3; X3 [label="Level Zero / OpenCL"]; X3 -> X4; X4 [label="Intel GPU driver"];
+          M -> G1 [label="Gaudi"]; G1 [label="vllm-gaudi plugin"]; G1 -> G2; G2 [label="PyTorch + Gaudi bridge"]; G2 -> G3; G3 [label="Intel Gaudi software"]; G3 -> G4; G4 [label="Gaudi driver + firmware"];
+        }
+    exercise:
+      label: Requires specified Intel hardware
+      hardware: An Intel Arc B-Series GPU (or another GPU listed on the PyTorch XPU page) with the Intel GPU driver installed
+      title: Confirm the PyTorch XPU path
+      steps:
+        - Install PyTorch from the XPU wheel index as shown on the PyTorch "Getting Started on Intel GPU" page.
+        - Run the check below.
+        - If it prints False, check the driver installation before anything else.
+      code: |
+        # Commands from the PyTorch XPU getting-started page (checked 2026-10-20)
+        pip3 install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/xpu
+        python -c "import torch; print(torch.xpu.is_available())"
+    expected_output: |
+      Illustrative output (not executed in this app): True
+      If it prints False, the PyTorch docs advise double-checking the Intel GPU driver installation.
+    interpretation: |
+      True means the framework sees the device. It does not prove the model's operators are supported or fast; that's the next test.
+    misconceptions:
+      - "\"Same framework means same stack.\" The device backend underneath differs."
+      - "\"IPEX is required for Intel GPUs.\" Intel recommends native PyTorch; IPEX reached EOL in March 2026."
+      - "\"vLLM supports Gaudi the same way as GPUs.\" Gaudi uses the separate vllm-gaudi plugin with its own release cadence."
+    senior_questions:
+      - Which layers in the stack need changes, and who owns each change?
+      - Does the model use custom kernels or vendor-specific code?
+      - Which plugin/framework release pairs with which driver and firmware?
+    checks:
+      - question: How does vLLM run on Intel Gaudi, according to the vLLM project?
+        options:
+          - Through the vllm-gaudi hardware plugin.
+          - Through the CUDA backend.
+          - It can't.
+          - Through the NPU plugin.
+        answer: 0
+        explanation: vllm-gaudi is the community-maintained hardware plugin for Gaudi.
+      - question: Intel Extension for PyTorch reached end of life. What does Intel recommend?
+        options:
+          - Use PyTorch directly.
+          - Stay on IPEX forever.
+          - Switch to TensorFlow.
+          - Use only OpenVINO.
+        answer: 0
+        explanation: Intel's notice recommends native PyTorch, which includes Intel CPU and GPU support.
+    sources: [vllm-gpu-install, vllm-gaudi-repo, pytorch-xpu-get-started, ipex-eol, gaudi-driver-install, onednn-repo, openvino-devices]
+
+  - id: hw-limit-vs-sw-gap
+    title: Hardware limit or software support gap?
+    level: Working TPM
+    minutes: 20
+    product_specific: true
+    summary: The most important triage question for an Intel Customer Engineering TPM.
+    explanation: |
+      When something doesn't work or is slow, it falls into one of three buckets:
+
+      1. **Hardware limit**: physics of the device. Example: a model's weights need more memory than the card has (a 70B model at BF16 needs ~140 GB; a 24 GB card can't hold it).
+      2. **Software support gap**: the hardware could do it, but the software doesn't yet. Examples: an operator not implemented for the backend, a precision not enabled, a serving feature missing.
+      3. **Configuration/environment problem**: everything is supported but set up wrong (version mismatch, permissions, NUMA, drivers).
+
+      **How to tell them apart (evidence first):**
+
+      - Do the arithmetic: memory needed vs capacity, bytes moved vs bandwidth.
+      - Check the support matrix and release notes for the operator/precision/model.
+      - Reproduce on a known-good reference configuration.
+      - Ask: would a different software version or setting change the result?
+
+      The buckets have very different owners and timelines. A configuration fix takes hours; a software gap needs a roadmap decision; a hardware limit means changing the plan.
+    why_it_matters: |
+      Customers hear "it doesn't work on Intel" as "the hardware can't." Correct classification protects the deal and routes the issue to the right team.
+    customer_example: |
+      Fictional *Humongous Insurance* sees an error with a new model. Evidence: the error names an unsupported operator; memory use is far below capacity; the matrix doesn't list the model. Classification: software support gap. The TPM files a feature request with business impact, not a hardware escalation.
+    visual:
+      type: table
+      caption: Classifying a problem by evidence
+      columns: [Evidence, Points to]
+      rows:
+        - ["Needed memory > device capacity (by arithmetic)", Hardware limit]
+        - ["Error names an unimplemented operator or precision", Software support gap]
+        - ["Works on reference setup, fails on customer setup", Configuration/environment]
+        - ["Newer release notes list the fix", Software (version) gap]
+    exercise:
+      label: Simulation only
+      title: Classify five issues
+      steps:
+        - Work through the Troubleshooting Clinic case "Unsupported model/operator".
+        - Gather evidence before choosing; the clinic scores evidence-first reasoning.
+      lab: lab-classify-issue
+    expected_output: |
+      The clinic reports which evidence you gathered and whether your classification matched it.
+    interpretation: |
+      If you picked the right answer but gathered little evidence, your score is lower: in real life you would not be able to defend the call.
+    misconceptions:
+      - "\"Slow means weak hardware.\" Often it's a software path or configuration."
+      - "\"Unsupported means impossible.\" It may be on the roadmap or have a workaround."
+      - "\"One failing test proves a hardware limit.\" Reproduce on a reference setup first."
+    senior_questions:
+      - What evidence separates hardware, software and configuration causes here?
+      - Has it been reproduced on a known-good reference configuration?
+      - If it's a software gap, what's the business impact to prioritize it?
+    checks:
+      - question: An error message names an operator that isn't implemented for the backend, and memory use is low. Most likely bucket?
+        options: [Hardware limit, Software support gap, Cooling problem, Network bottleneck]
+        answer: 1
+        explanation: The hardware has headroom; the missing operator is a software gap.
+      - question: A model needs ~140 GB of weights and the card has 24 GB. Which bucket?
+        options: [Hardware limit (for a single card), Software gap, Permission issue, Logging issue]
+        answer: 0
+        explanation: Capacity arithmetic shows it can't fit on one card at that precision; change model, precision or device count.
+    sources: [arc-pro-b60-datasheet, gaudi-support-matrix, academy-original]
+
+  - id: client-edge-vs-datacenter
+    title: Client/edge vs data center requirements
+    level: Working TPM
+    minutes: 20
+    product_specific: true
+    summary: An AI PC and a data center rack solve different problems with different stacks.
+    explanation: |
+      **Client and edge** (laptops, desktops, kiosks, cameras):
+
+      - One user or one device, power and battery limits, many OS versions (often Windows), no admin access.
+      - Hardware: Core Ultra CPU, integrated Arc GPU and NPU.
+      - Software: commonly OpenVINO (CPU, GPU and NPU devices). OpenVINO release notes track NPU-specific fixes, for example 2026.4.1 fixed NPU crashes on Core Ultra Series 3 on Windows with certain NPU driver versions.
+      - Success: responsiveness, battery, model size that fits the device, fleet-wide driver versions.
+
+      **Data center:**
+
+      - Many users, high utilization, Linux, containers/Kubernetes, SLAs.
+      - Hardware: Xeon, Arc Pro / data center GPUs, Gaudi.
+      - Success: throughput at a latency target, cost per million tokens, reliability, scaling.
+
+      The NPU is not a small Gaudi. It has its own driver, its own OpenVINO plugin and its own supported-model list.
+    why_it_matters: |
+      Customers in retail, healthcare and manufacturing often need both: edge inference and central services. The TPM must run separate requirement and validation tracks.
+    customer_example: |
+      Fictional *VanArsdel Retail* wants in-store product recognition on kiosks plus a central catalog assistant. The TPM splits the POC into an edge track (OpenVINO on Core Ultra, driver fleet versions, power) and a data center track (serving throughput, cost).
+    visual:
+      type: table
+      caption: Client/edge vs data center
+      columns: [Dimension, Client / edge, Data center]
+      rows:
+        - [Users per device, One, Many]
+        - [Typical OS, "Windows, Linux", Linux]
+        - [Limit, "Power, thermals, memory", "Throughput at latency, cost"]
+        - [Intel hardware, "Core Ultra CPU / GPU / NPU", "Xeon, Arc Pro / data center GPU, Gaudi"]
+        - [Common software, OpenVINO, "PyTorch, vLLM, OpenVINO"]
+        - [Version risk, "Fleet of driver versions", "Cluster-wide stack consistency"]
+    exercise:
+      label: Runs on a normal laptop
+      title: Check whether your laptop has an NPU and what drives it
+      steps:
+        - "Windows: Task Manager > Performance, look for NPU. Device Manager > Neural processors shows the driver version."
+        - "Linux: run ls /dev/accel (an NPU, if present and driven, often appears there)."
+        - Record the driver version; fleet-wide driver versions are a real client-POC risk.
+      code: |
+        # Linux, read-only
+        ls -l /dev/accel 2>/dev/null || echo "no accel devices found"
+    expected_output: |
+      Illustrative: "no accel devices found" on most older laptops. Device naming on Linux varies by driver and kernel; treat this check as a hint, not proof.
+    interpretation: |
+      If no NPU exists, edge inference uses CPU or GPU. If one exists, OpenVINO's NPU device is the usual path.
+    misconceptions:
+      - "\"An NPU is a small data center accelerator.\" Different software, models and goals."
+      - "\"Edge POCs are just smaller data center POCs.\" They have fleet, OS and power constraints."
+      - "\"NPU TOPS predicts app speed.\" Measure the actual model in OpenVINO."
+    senior_questions:
+      - How many device models, OS versions and driver versions exist in the fleet?
+      - What happens when the NPU is unavailable (fallback path)?
+      - Who owns driver updates on customer-managed devices?
+    checks:
+      - question: Which Intel software is commonly used to run models on a Core Ultra NPU?
+        options: [OpenVINO, Intel Gaudi software, vllm-gaudi, XPU Manager]
+        answer: 0
+        explanation: OpenVINO has an NPU device plugin.
+      - question: What is a typical client/edge POC risk that data center POCs rarely have?
+        options:
+          - Many different driver versions across a device fleet.
+          - Too much rack power.
+          - RoCE switch config.
+          - Multi-node training.
+        answer: 0
+        explanation: Client fleets mix hardware and driver versions you don't control.
+    sources: [openvino-releases, openvino-devices, intel-core-ultra-s3-vpro, liliputing-panther-lake]

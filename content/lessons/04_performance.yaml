@@ -1,0 +1,334 @@
+path: performance
+lessons:
+  - id: latency-throughput-metrics
+    title: "TTFT, inter-token latency, end-to-end latency, throughput and percentiles"
+    level: Working TPM
+    minutes: 25
+    product_specific: false
+    summary: The handful of numbers every LLM performance discussion uses, defined precisely.
+    explanation: |
+      Definitions as used by vLLM's benchmark tool:
+
+      - **TTFT (time to first token)**: time from sending a request to the first output token. Includes queueing and prefill.
+      - **ITL (inter-token latency)**: the gap between consecutive output tokens.
+      - **TPOT (time per output token)**: per request, `(end-to-end latency − TTFT) / (output tokens − 1)`.
+      - **End-to-end latency (E2E)**: request sent to last token received.
+      - **Per-request tokens/s**: how fast one user sees text appear ≈ 1 / TPOT.
+      - **Aggregate (system) throughput**: total output tokens per second across all requests.
+
+      **Percentiles:** P50 (median) is the typical request; P95 means 95% of requests were this fast or faster; P99 captures the slow tail. Users and SLAs care about tails. Averages hide them.
+
+      **Worked example:** a request with E2E 5.0 s, TTFT 0.5 s, 101 output tokens → TPOT = (5.0 − 0.5) / 100 = 0.045 s = 45 ms → ≈ 22 tokens/s for that user.
+    why_it_matters: |
+      Customers, engineers and executives use these words loosely. A TPM insists that every reported number names the metric, the percentile and the load it was measured at.
+    customer_example: |
+      Fictional *Northwind Shops* says "we need 100 tokens per second." After asking, it means per user, not aggregate. That changes the operating point and the hardware count by a large factor.
+    visual:
+      type: dot
+      caption: Timeline of one streamed request
+      source: |
+        digraph G { rankdir=LR; node [shape=box, style=rounded];
+          S [label="Request sent"]; Q [label="Queue wait"]; P [label="Prefill"]; T1 [label="Token 1\n(TTFT ends)"]; T2 [label="Token 2"]; TN [label="... Token N\n(E2E ends)"];
+          S -> Q -> P -> T1 -> T2 [label="ITL"]; T2 -> TN [label="ITL ..."]; }
+    exercise:
+      label: Runs on a normal laptop
+      title: Compute P50/P95/P99 from real timings on your machine
+      steps:
+        - Run the "Latency percentiles" lab. It times a small function 200 times on the machine running the app.
+        - Compare mean vs P99 and see how a few slow runs move the tail.
+      code: |
+        import time, statistics
+        def work(): sum(i*i for i in range(20000))
+        times = []
+        for _ in range(200):
+            t = time.perf_counter(); work(); times.append((time.perf_counter() - t) * 1000)
+        times.sort()
+        p = lambda q: times[min(len(times)-1, int(round(q/100*(len(times)-1))))]
+        print(f"mean {statistics.mean(times):.2f} ms  p50 {p(50):.2f}  p95 {p(95):.2f}  p99 {p(99):.2f}")
+      lab: lab-latency-percentiles
+    expected_output: |
+      Measured in-app when you run it. Typical shape: P99 noticeably higher than P50, and the first few runs slower (warm-up).
+    interpretation: |
+      If P99 is much higher than P50, something intermittent (other processes, garbage collection, queueing) is affecting some runs. The same is true on servers.
+    misconceptions:
+      - "\"Average latency is what users feel.\" Tails matter more."
+      - "\"Tokens/s is one number.\" Per-request and aggregate tokens/s differ by the concurrency factor."
+      - "\"TTFT measures model speed.\" It also includes queue time."
+    senior_questions:
+      - Is this per-request or aggregate throughput, and at what concurrency?
+      - Which percentile is the SLA on?
+      - Does TTFT include client-side queueing?
+    checks:
+      - question: "A request: E2E 3.0 s, TTFT 1.0 s, 41 output tokens. What is TPOT?"
+        options: [50 ms, 73 ms, 25 ms, 100 ms]
+        answer: 0
+        explanation: (3.0 − 1.0) / (41 − 1) = 2.0 / 40 = 0.05 s = 50 ms.
+      - question: What does P95 latency mean?
+        options:
+          - 95% of requests were at or below this latency.
+          - The average of 95 requests.
+          - The fastest 5% of requests.
+          - 95 milliseconds.
+        answer: 0
+        explanation: Percentiles describe the distribution of request latencies.
+    sources: [vllm-bench-cli]
+
+  - id: measurement-hygiene
+    title: "Warm-up, compilation, steady state, token lengths, batch size and fair comparisons"
+    level: Working TPM
+    minutes: 30
+    product_specific: false
+    summary: Most bad benchmark comparisons come from measuring different things.
+    explanation: |
+      **Warm-up and compilation:** first requests are often slow. Frameworks compile graphs, allocate memory and load kernels. Many accelerator stacks compile on first use of each input shape. Discard warm-up runs, and report them separately if the customer cares about cold start.
+
+      **Steady state:** measure after warm-up, over enough requests and time that results stop moving, and repeat runs to see variance.
+
+      **Lengths and batch:** input length, output length, batch size and concurrency change results dramatically. A benchmark must state them.
+
+      **A fair comparison holds constant:**
+
+      - Model and revision, precision and quantization method.
+      - Input/output length distribution, concurrency/request rate.
+      - Accuracy (both pass the same quality bar).
+      - Measurement method, client location, warm-up handling, number of runs.
+      - And it records each system's full hardware/software inventory.
+
+      **Label every number:** measured (who, when, which config), vendor claim (where published), educational estimate (formula), or simulated (model, seed).
+    why_it_matters: |
+      Competitive comparisons drive buying decisions. An unfair comparison, in either direction, damages trust once someone notices. The TPM's job is to make comparisons that survive scrutiny.
+    customer_example: |
+      Fictional *Tailspin Research* compares their incumbent system at batch 1 with an Intel system at batch 32 and calls the Intel system "slower" because TTFT is higher. Re-run at matched concurrency, the comparison changes. The TPM adds a "matched settings" checklist to the benchmark template.
+    visual:
+      type: bars
+      caption: "Simulated latency per run showing warm-up (not measured data)"
+      x: ["Run 1", "Run 2", "Run 3", "Run 4", "Run 5", "Run 6", "Run 7", "Run 8"]
+      y: [9.5, 3.1, 1.3, 1.2, 1.25, 1.2, 1.22, 1.21]
+      x_label: Run
+      y_label: Latency (s, simulated)
+    exercise:
+      label: Runs on a normal laptop
+      title: See warm-up on your own machine
+      steps:
+        - Run the "Warm-up effect" lab. It times the first and later calls of a function that builds a cache on first use.
+        - Compare the first call to the steady-state median.
+      lab: lab-warmup
+    expected_output: |
+      Measured in-app: the first call is several times slower than later calls.
+    interpretation: |
+      Including the first call in an average makes steady-state performance look worse. Report cold start separately if it matters to the customer.
+    misconceptions:
+      - "\"One run is enough.\" Variance needs repeated runs."
+      - "\"Warm-up is cheating.\" It's standard, as long as it's disclosed and cold start is reported when relevant."
+      - "\"Same model name means same test.\" Revision, precision and lengths must match."
+    senior_questions:
+      - Were warm-up runs excluded and how many measured runs were there?
+      - Do both systems pass the same accuracy bar at the tested precision?
+      - Are input/output lengths and concurrency identical, and recorded?
+    checks:
+      - question: Which change makes a comparison unfair?
+        options:
+          - Different concurrency on each system.
+          - Same model on both systems.
+          - Same accuracy test on both.
+          - Recording both inventories.
+        answer: 0
+        explanation: Concurrency changes both latency and throughput.
+      - question: Why discard warm-up runs from steady-state results?
+        options:
+          - First runs include one-time costs like compilation and memory allocation.
+          - They are always faster.
+          - The customer asked.
+          - They break the hardware.
+        answer: 0
+        explanation: One-time costs distort steady-state numbers; report them separately if relevant.
+    sources: [vllm-bench-cli, academy-original]
+
+  - id: bottlenecks-utilization-power
+    title: "Compute-, memory- or communication-bound? Utilization, memory, power and energy"
+    level: Working TPM
+    minutes: 30
+    product_specific: false
+    summary: Find what limits the workload before trying to speed it up.
+    explanation: |
+      - **Compute-bound**: the math units are the limit. Typical for prefill of long prompts and large-batch training.
+      - **Memory-bound**: moving data to/from memory is the limit. Typical for LLM decode at small batch, because each token re-reads weights.
+      - **Communication-bound**: waiting for data between devices or servers. Typical for poorly scaled multi-device jobs.
+      - **Host-bound**: the CPU side can't keep up (see "How host CPUs and accelerators cooperate").
+
+      **Arithmetic intensity** = operations per byte moved. Low intensity → memory-bound; high → compute-bound. You don't need the full roofline model to use the idea.
+
+      **Do not infer real throughput from peak FLOPS.** Peak FLOPS assumes perfect compute-bound work. Real LLM decode is often limited by bandwidth, software kernels, batching and host overheads.
+
+      **Utilization, memory, power and energy:** report device utilization and memory use alongside performance. Energy per token (joules/token) = average power (W) ÷ tokens per second. Measure power with the platform's tools, and state whether it's device-only or whole-server.
+    why_it_matters: |
+      Tuning the wrong thing wastes weeks. A TPM who asks "what's the bottleneck and how do we know?" directs engineering effort and avoids unrealistic promises based on spec sheets.
+    customer_example: |
+      Fictional *Proseware* expects speed to scale with a device's FLOPS advantage. Decode at batch 1 barely improves because it's memory-bound. Increasing batch size (where latency allows) improves throughput far more.
+    visual:
+      type: table
+      caption: Symptoms and likely limits
+      columns: [Symptom, Likely bound, Evidence to collect]
+      rows:
+        - ["Speed scales with batch, latency OK", "Memory-bound at small batch", "Throughput vs batch curve"]
+        - ["Compute units saturated, long prompts", Compute-bound, "Utilization, prefill time vs prompt length"]
+        - ["Adding devices barely helps", Communication-bound, "Time in collectives, link stats"]
+        - ["Device often idle", "Host-bound or input pipeline", "Host CPU usage, launch gaps"]
+    exercise:
+      label: Runs on a normal laptop
+      title: Compare a memory-bound and a compute-bound operation
+      steps:
+        - Run the "Memory bandwidth vs compute" lab.
+        - Note the GB/s for the copy and GFLOP/s for the matrix multiply.
+      lab: lab-bandwidth-vs-compute
+    expected_output: |
+      Measured in-app. The copy reports GB/s near your memory bandwidth; the matmul reports GFLOP/s far above what the copy's byte count would suggest.
+    interpretation: |
+      Same machine, very different limits. Accelerators behave the same way across prefill and decode.
+    misconceptions:
+      - "\"More FLOPS = more tokens/s.\" Only for compute-bound phases."
+      - "\"100% utilization means efficient.\" Some tools report busy time, not useful work."
+      - "\"Power is the TDP number.\" Measure actual power under the workload."
+    senior_questions:
+      - What is the bottleneck in each phase, and what evidence shows it?
+      - Is utilization measured as busy time or as achieved FLOPS/bandwidth?
+      - Is power measured for the device, the server or the rack?
+    checks:
+      - question: LLM decode at batch 1 is usually limited by...
+        options: [Memory bandwidth, Disk speed, Keyboard, Display]
+        answer: 0
+        explanation: Each token re-reads weights with little math per byte.
+      - question: A device averages 400 W while producing 2,000 tokens/s. Energy per token?
+        options: [0.2 J/token, 5 J/token, 800 J/token, 0.002 J/token]
+        answer: 0
+        explanation: 400 W ÷ 2,000 tokens/s = 0.2 J per token.
+    sources: [academy-original]
+
+  - id: memory-budget-kv
+    title: "Memory budget: model weights, runtime overhead and KV cache"
+    level: Working TPM
+    minutes: 30
+    product_specific: false
+    summary: Estimate whether a deployment fits before anyone requests hardware.
+    explanation: |
+      **Total device memory ≈ weights + KV cache + activations/runtime overhead.**
+
+      **Weights** = parameters × bytes per parameter.
+
+      **KV cache (simplified, standard attention):**
+
+      `KV bytes = 2 × layers × KV heads × head dimension × bytes per element × tokens × concurrent sequences`
+
+      The "2" is one key and one value. Models using grouped-query attention (GQA) have fewer KV heads than attention heads, which shrinks the cache.
+
+      **Worked example (illustrative architecture, verify against the model's config):** 32 layers, 8 KV heads, head dim 128, FP16 (2 bytes):
+      per token = 2 × 32 × 8 × 128 × 2 = 131,072 bytes = 128 KiB.
+      For 8,192 tokens × 16 sequences = 131,072 tokens → 16 GiB.
+
+      **Overhead:** frameworks reserve memory for activations, workspaces, graphs and fragmentation. It varies by stack and settings, so the calculator makes it configurable, and you should replace it with a measured value from the real system.
+    why_it_matters: |
+      Memory is the first gate for LLM deployments. Getting it wrong means OOM failures in week one or unrealistic concurrency promises.
+    customer_example: |
+      Fictional *Coho Winery* plans 32 users at 16K context on one card. The weights fit, but the KV estimate for that concurrency exceeds the remaining memory. Options discussed: lower max context, limit concurrency, quantize KV cache (if supported), or add devices.
+    visual:
+      type: bars
+      caption: "Illustrative memory budget for one card (educational estimate, GB)"
+      x: ["Weights (8B @ BF16)", "KV cache (8K tokens x 8 seqs)", "Overhead (assumed ~10%)", "Free"]
+      y: [16, 8.6, 2.5, 4.9]
+      x_label: Component
+      y_label: GB (illustrative)
+    exercise:
+      label: Runs on a normal laptop
+      title: Size a deployment with the calculators
+      steps:
+        - Open Performance Playground > Memory calculators.
+        - Enter 32 layers, 8 KV heads, head dim 128, FP16, 8,192 tokens, 16 sequences. Confirm 16 GiB of KV cache.
+        - Add 8B parameters at BF16 and a 10% overhead and check total against a 32 GB device.
+    expected_output: |
+      Calculator output (arithmetic): KV cache = 17,179,869,184 bytes = 16.00 GiB (17.18 GB). Weights = 16.00 GB.
+    interpretation: |
+      Weights 16 GB + KV 17.18 GB already exceed 32 GB before overhead, so that configuration does not fit on a single 32 GB device. Reduce context, concurrency or precision, or split across devices.
+    misconceptions:
+      - "\"If the weights fit, the deployment fits.\" KV cache and overhead also need room."
+      - "\"KV cache is per model.\" It's per token per sequence and grows with use."
+      - "\"All attention heads store KV.\" With GQA only the KV heads count."
+    senior_questions:
+      - What max context and concurrency does the budget assume?
+      - What overhead was measured on the real stack?
+      - Does the serving engine support KV-cache quantization or paging on this backend?
+    checks:
+      - question: Which term in the KV formula is reduced by grouped-query attention?
+        options: [Number of KV heads, Layers, Tokens, Bytes per element]
+        answer: 0
+        explanation: GQA shares K/V across query heads, reducing KV heads.
+      - question: "Per-token KV cache for 40 layers, 8 KV heads, head dim 128, FP16?"
+        options: [160 KiB, 128 KiB, 80 KiB, 320 KiB]
+        answer: 0
+        explanation: 2 × 40 × 8 × 128 × 2 = 163,840 bytes = 160 KiB.
+    sources: [arxiv-pagedattention, academy-original]
+
+  - id: quality-cost-tradeoffs
+    title: Quality/accuracy tradeoffs and cost per workload / per million tokens
+    level: Working TPM
+    minutes: 25
+    product_specific: false
+    summary: Cheaper and faster only counts if quality still passes.
+    explanation: |
+      **Quality tradeoffs:** quantization, smaller models, shorter context and aggressive batching can all reduce cost and change quality. Every change needs a re-run of the agreed quality evaluation.
+
+      **Cost per million tokens (illustrative formula):**
+
+      `cost per 1M tokens = hourly system cost ÷ (tokens per second × 3,600) × 1,000,000`
+
+      Example: $10/hour at 1,000 tokens/s → 10 ÷ 3,600,000 × 1,000,000 ≈ $2.78 per million tokens.
+
+      Adjust for **utilization**: if the system is busy only 50% of the time, effective cost per token doubles.
+
+      **Cost per workload** often matters more: for example cost per answered support ticket = tokens per ticket × cost per token, plus retrieval and other services.
+
+      Hourly cost should include what the customer actually pays: hardware amortization or cloud rate, power, cooling, space, software and support. Those inputs are customer-specific; this app never invents real prices.
+    why_it_matters: |
+      Executives decide on cost at a quality bar. A TPM who frames results as "cost per million tokens at P95 TTFT ≤ X with accuracy within Y" gives them a decision, not a pile of numbers.
+    customer_example: |
+      Fictional *Fabrikam Legal* compares two configurations. Config B is 30% cheaper per million tokens but fails the citation-accuracy test. The recommendation is Config A, with B as a future option if a better quantization method passes.
+    visual:
+      type: table
+      caption: "Illustrative cost per million tokens (formula only, fictional inputs)"
+      columns: [Hourly cost ($), Tokens/s, Utilization, Cost per 1M tokens ($)]
+      rows:
+        - ["10", "1,000", "100%", "2.78"]
+        - ["10", "1,000", "50%", "5.56"]
+        - ["20", "3,000", "100%", "1.85"]
+    exercise:
+      label: Runs on a normal laptop
+      title: Compute cost per million tokens
+      steps:
+        - Open Performance Playground > Cost per million tokens.
+        - Enter $10/hour, 1,000 tokens/s, 100% utilization and confirm $2.78.
+        - Lower utilization to 50% and explain the change.
+    expected_output: |
+      Calculator output (arithmetic): $2.78 per 1M tokens at 100%; $5.56 at 50%.
+    interpretation: |
+      Idle time costs money. Throughput at the latency target and realistic utilization matter more than peak throughput.
+    misconceptions:
+      - "\"Cheapest per token wins.\" Not if it fails the quality bar or latency target."
+      - "\"Peak throughput sets cost.\" Use throughput at the operating point and real utilization."
+      - "\"Hardware price is the whole cost.\" Power, space, software and support add up."
+    senior_questions:
+      - What quality bar must every cost option pass?
+      - Is throughput measured at the latency target and realistic utilization?
+      - What's included in the hourly cost?
+    checks:
+      - question: "$15/hour system at 2,500 tokens/s, 100% utilization. Cost per 1M tokens?"
+        options: [$1.67, $6.00, $0.60, $16.67]
+        answer: 0
+        explanation: 15 ÷ (2,500 × 3,600) × 1,000,000 = 1.667.
+      - question: Config B is cheaper but fails the accuracy test. What should the recommendation be?
+        options:
+          - Config A (passes quality), with B as an option if a fix passes evaluation.
+          - Config B because it's cheaper.
+          - Neither, cancel the POC.
+          - Average them.
+        answer: 0
+        explanation: Quality is a gate; cost is compared among options that pass.
+    sources: [academy-original]

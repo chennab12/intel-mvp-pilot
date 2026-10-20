@@ -1,0 +1,465 @@
+# Source registry. Every product-specific claim in the app points at one of these ids.
+#
+# Fields
+#   title, publisher, url  where the claim comes from
+#   kind       official | upstream | paper | third-party | original
+#   checked    the date a person or tool actually opened the page (YYYY-MM-DD), or null if never checked
+#   status     available | announced | historical | deprecated | unverified | concept
+#   product    exact product or family the source covers (or "n/a")
+#   version    hardware/software version the source applies to, when relevant
+#   facts      the specific facts the app relies on (short, as read on the page)
+#   review_by  date this entry should be re-checked (manual review workflow, see README)
+#
+# Rule: never set `checked` to a date unless the page was actually opened on that date.
+# If a claim cannot be checked, set checked: null and status: unverified, and the app shows
+# "Needs verification".
+
+sources:
+  intel-amx-overview:
+    title: Intel Advanced Matrix Extensions (Intel AMX) overview
+    publisher: Intel
+    url: https://www.intel.com/content/www/us/en/products/docs/accelerator-engines/advanced-matrix-extensions/overview.html
+    kind: official
+    checked: 2026-10-20
+    status: available
+    product: Intel AMX on Intel Xeon processors
+    version: 4th Gen Intel Xeon Scalable and later (page names 4th Gen explicitly)
+    facts:
+      - AMX is a built-in accelerator on Xeon that improves deep-learning training and inference on the CPU.
+      - Accelerator availability varies by SKU.
+      - The page does not list data types; check the specific SKU on Intel ARK.
+    review_by: 2027-04-20
+
+  ark-xeon-696x:
+    title: Intel Xeon 696X Processor (336M Cache, 2.40 GHz) specifications
+    publisher: Intel ARK
+    url: https://www.intel.com/content/www/us/en/products/sku/243860/intel-xeon-696x-processor-336m-cache-2-40-ghz/specifications.html
+    kind: official
+    checked: 2026-10-20
+    status: available
+    product: Intel Xeon 6 processors (formerly Granite Rapids), SKU Xeon 696X
+    version: launch Q1'26 per ARK
+    facts:
+      - 64 Performance-cores, 128 threads, 336 MB cache.
+      - Memory DDR5 6400 MT/s or MRDIMM 8000 MT/s, 8 memory channels.
+      - PCIe 5.0, 128 lanes; TDP 350 W.
+      - Intel AMX listed as Yes; instruction sets include AVX2, AVX-512 and AMX.
+    review_by: 2027-04-20
+
+  intel-xeon6-mrdimm-brief:
+    title: Intel Xeon 6 processors with MRDIMM solution brief
+    publisher: Intel
+    url: https://www.intel.com/content/www/us/en/content-details/919018/intel-xeon-6-processors-with-mrdimm-solution-brief.html
+    kind: official
+    checked: 2026-10-20
+    status: available
+    product: Intel Xeon 6 platforms with MRDIMM
+    version: n/a
+    facts:
+      - Vendor claim: memory bandwidth "up to 8800 MT/s"; configurations reaching it are not listed on the page.
+      - Vendor claims of higher bandwidth / lower latency vs unnamed competitors; baseline and workload not given on the page.
+    review_by: 2027-04-20
+
+  arc-pro-b60-datasheet:
+    title: Intel Arc Pro B60 GPU datasheet
+    publisher: Intel
+    url: https://www.intel.com/content/dam/www/central-libraries/us/en/documents/2026-03/datasheet-b60-gpu.pdf
+    kind: official
+    checked: 2026-10-20
+    status: available
+    product: Intel Arc Pro B60 (Xe2-HPG, Battlemage family)
+    version: datasheet dated 2026-03 folder
+    facts:
+      - 24 GB GDDR6 on a 192-bit interface, up to 456 GB/s.
+      - 20 Xe-cores, 160 XMX AI engines.
+      - PCIe 5.0 x16 connector (x8 electrical), Gen 4 backward compatible.
+      - 120-200 W total board power (Intel reference; partner designs vary).
+      - Sold as partner-branded cards; the Intel-branded version is not for sale.
+      - Software listed includes oneAPI, OpenCL 3.0 and OpenVINO; OS Windows 10/11 and Linux (Ubuntu).
+    review_by: 2027-04-20
+
+  ark-arc-pro-b70:
+    title: Intel Arc Pro B70 Graphics specifications
+    publisher: Intel ARK
+    url: https://www.intel.com/content/www/us/en/products/sku/245797/intel-arc-pro-b70-graphics/specifications.html
+    kind: official
+    checked: 2026-10-20
+    status: available
+    product: Intel Arc Pro B70 (products formerly Battlemage)
+    version: launch Q1'26, marketing status Launched
+    facts:
+      - 32 GB GDDR6, 256-bit, 608 GB/s.
+      - 32 Xe-cores, 256 XMX engines.
+      - TBP 230 W (range 160-290 W); PCIe 5.0 x16.
+    review_by: 2027-04-20
+
+  gaudi3-pcie-brief:
+    title: Intel Gaudi 3 AI Accelerator HL-338 PCIe add-in card product brief
+    publisher: Intel
+    url: https://cdrdv2-public.intel.com/817488/Gaudi%203%20PCIe%20Product%20Brief_RB_1_V6.pdf
+    kind: official
+    checked: 2026-10-20
+    status: available
+    product: Intel Gaudi 3 HL-338 PCIe card
+    version: product brief RB_1_V6
+    facts:
+      - 128 GB HBM2e, 3.7 TB/s peak bandwidth; 96 MB on-die SRAM.
+      - 8 MME engines and 64 Tensor Processor Cores (TPCs).
+      - PCIe 5.0 x16 host interface; card TDP 600 W, air-cooled, double-width.
+      - Software is Intel Gaudi software, integrating with PyTorch, vLLM and Hugging Face.
+    review_by: 2027-04-20
+
+  gaudi3-oam-brief:
+    title: Intel Gaudi 3 AI Accelerator HL-325L OAM mezzanine card product brief
+    publisher: Intel
+    url: https://cdrdv2-public.intel.com/817487/gaudi-3-ai-accelerator-hl-325l-oam-mezzanine-card-product-brief.pdf
+    kind: official
+    checked: 2026-10-20
+    status: available
+    product: Intel Gaudi 3 HL-325L OAM card
+    version: n/a
+    facts:
+      - 128 GB HBM2E, 3.7 TB/s.
+      - 24 integrated 200 GbE RoCE v2 RDMA ports.
+      - Up to 900 W card-level TDP.
+      - Data types listed include FP8, BF16, FP16, TF32, FP32 (no TFLOPS figure in the brief).
+    review_by: 2027-04-20
+
+  intel-gaudi-products:
+    title: Intel Gaudi AI Accelerator products page
+    publisher: Intel
+    url: https://www.intel.com/content/www/us/en/products/details/processors/ai-accelerators/gaudi.html
+    kind: official
+    checked: 2026-10-20
+    status: available
+    product: Intel Gaudi 3 (HL-338 PCIe, HL-325L OAM, HLB-325 baseboard)
+    version: n/a
+    facts:
+      - Lists PCIe, OAM and baseboard form factors for Gaudi 3.
+      - Vendor claims vs Gaudi 2 (for example up to 4x BF16 AI compute); these are vendor claims, not measurements.
+    review_by: 2027-04-20
+
+  gaudi-support-matrix:
+    title: Intel Gaudi software Support Matrix
+    publisher: Intel Gaudi documentation
+    url: https://docs.habana.ai/en/latest/Support_Matrix/Support_Matrix.html
+    kind: official
+    checked: 2026-10-20
+    status: available
+    product: Intel Gaudi 2 and Gaudi 3 software stack
+    version: Intel Gaudi software 1.24.2 (build 1.24.2-481)
+    facts:
+      - Covers Gaudi 2 and Gaudi 3.
+      - PyTorch 2.13 for 1.24.2.
+      - Gaudi 3 OS list includes Ubuntu 22.04.5 / 24.04.2 and RHEL 9.6, 9.8, 10.2.
+      - Firmware versions are listed per card (for example HL-325L, HL-338A).
+    review_by: 2027-01-20
+
+  gaudi-driver-install:
+    title: Intel Gaudi driver and software installation
+    publisher: Intel Gaudi documentation
+    url: https://docs.habana.ai/en/latest/Installation_Guide/Driver_Installation.html
+    kind: official
+    checked: 2026-10-20
+    status: available
+    product: Intel Gaudi software
+    version: page covers 1.24.2
+    facts:
+      - Installed with habanalabs-installer.sh.
+      - habanalabs-container-runtime is required for containers and is not installed automatically.
+      - Docker and Kubernetes are supported; CPU settings must be set on bare metal before starting a container.
+      - The hl-smi tool reports device indexes.
+    review_by: 2027-01-20
+
+  vllm-gaudi-repo:
+    title: vLLM Hardware Plugin for Intel Gaudi (vllm-gaudi)
+    publisher: vLLM project (GitHub)
+    url: https://github.com/vllm-project/vllm-gaudi
+    kind: upstream
+    checked: 2026-10-20
+    status: available
+    product: vLLM on Intel Gaudi
+    version: plugin 0.26.0 (2026/08) with Intel Gaudi 1.24.1 and PyTorch 2.11
+    facts:
+      - Community-maintained plugin using vLLM's hardware-pluggable architecture.
+      - Each plugin release is built on a specific vLLM version; upstream API changes can break compatibility.
+    review_by: 2027-01-20
+
+  vllm-gpu-install:
+    title: vLLM GPU installation (Intel XPU section)
+    publisher: vLLM documentation
+    url: https://docs.vllm.ai/en/latest/getting_started/installation/gpu.html
+    kind: upstream
+    checked: 2026-10-20
+    status: available
+    product: vLLM on Intel Data Center GPU and Intel Arc GPU (XPU)
+    version: docs "latest" as of check date
+    facts:
+      - Lists Intel Data Center GPU and Intel Arc GPU for the XPU backend; Linux only.
+      - vllm-xpu-kernels wheel requires Python 3.12.
+      - Install the Intel GPU driver first; build from source with VLLM_TARGET_DEVICE=xpu or use nightly XPU wheels.
+    review_by: 2027-01-20
+
+  vllm-bench-cli:
+    title: vLLM benchmark CLI (vllm bench serve)
+    publisher: vLLM documentation
+    url: https://docs.vllm.ai/en/latest/benchmarking/cli.html
+    kind: upstream
+    checked: 2026-10-20
+    status: concept
+    product: vLLM benchmarking tools
+    version: docs "latest" as of check date
+    facts:
+      - Reports TTFT, TPOT, ITL and end-to-end latency with mean, median and P99.
+      - TPOT = (end-to-end latency - TTFT) / (output tokens - 1), per request.
+      - Reports request throughput, output token throughput and total token throughput.
+    review_by: 2027-04-20
+
+  pytorch-xpu-get-started:
+    title: Getting Started on Intel GPU (PyTorch)
+    publisher: PyTorch documentation
+    url: https://docs.pytorch.org/docs/main/notes/get_start_xpu.html
+    kind: upstream
+    checked: 2026-10-20
+    status: available
+    product: PyTorch XPU backend for Intel GPUs
+    version: docs "main" as of check date
+    facts:
+      - Supported data center hardware listed - Intel Data Center GPU Max Series (Ponte Vecchio).
+      - Supported client hardware listed - Arc A-Series, Arc B-Series, Core Ultra with Arc Graphics (Meteor Lake-H, Arrow Lake-H, Lunar Lake, Panther Lake).
+      - Install with the XPU wheel index (download.pytorch.org/whl/xpu); check with torch.xpu.is_available().
+      - If it prints False, double check the Intel GPU driver installation.
+    review_by: 2027-01-20
+
+  ipex-eol:
+    title: Intel Extension for PyTorch installation guide (EOL notice)
+    publisher: Intel
+    url: https://pytorch-extension.intel.com/
+    kind: official
+    checked: 2026-10-20
+    status: deprecated
+    product: Intel Extension for PyTorch (IPEX)
+    version: all versions
+    facts:
+      - IPEX reaches end of life by the end of March 2026.
+      - Intel recommends using PyTorch directly because Intel CPU and GPU support is in native PyTorch.
+    review_by: 2027-04-20
+
+  openvino-releases:
+    title: OpenVINO releases (GitHub)
+    publisher: OpenVINO toolkit (GitHub)
+    url: https://github.com/openvinotoolkit/openvino/releases
+    kind: upstream
+    checked: 2026-10-20
+    status: available
+    product: OpenVINO toolkit
+    version: latest seen 2026.4.1 (01 Oct 2026)
+    facts:
+      - 2026.4.1 fixes NPU crashes on Core Ultra Series 3 on Windows with certain NPU driver versions.
+      - 2026.3.0 adds Intel Xeon 6+ support; the CPU plugin requires AVX2 as a minimum.
+      - Releases carry separate CPU, GPU and NPU notes.
+    review_by: 2027-01-20
+
+  openvino-devices:
+    title: OpenVINO inference devices and modes
+    publisher: OpenVINO documentation
+    url: https://docs.openvino.ai/2026/openvino-workflow/running-inference/inference-devices-and-modes.html
+    kind: upstream
+    checked: 2026-10-20
+    status: available
+    product: OpenVINO device plugins
+    version: 2026 documentation
+    facts:
+      - Separate CPU, GPU and NPU device pages, plus automatic device selection and heterogeneous execution.
+    review_by: 2027-04-20
+
+  openvino-sysreq:
+    title: OpenVINO system requirements
+    publisher: OpenVINO documentation
+    url: https://docs.openvino.ai/systemrequirements
+    kind: upstream
+    checked: null
+    status: unverified
+    product: OpenVINO toolkit
+    version: unknown
+    facts:
+      - The page body could not be read during the 2026-10-20 check. Re-check before quoting OS or device requirements.
+    review_by: 2026-11-20
+
+  onednn-repo:
+    title: oneDNN (UXL Foundation) repository
+    publisher: UXL Foundation (GitHub)
+    url: https://github.com/uxlfoundation/oneDNN
+    kind: upstream
+    checked: 2026-10-20
+    status: available
+    product: oneDNN
+    version: repository main as of check date
+    facts:
+      - Open-source deep learning building-block library, governed by the UXL Foundation.
+      - Optimized for x86-64 and AArch64 CPUs and Intel discrete and integrated GPUs.
+      - Used by PyTorch, OpenVINO and TensorFlow.
+    review_by: 2027-04-20
+
+  intel-gpu-driver-install:
+    title: Intel data center GPU driver installation
+    publisher: Intel (dgpu-docs)
+    url: https://dgpu-docs.intel.com/driver/installation.html
+    kind: official
+    checked: 2026-10-20
+    status: available
+    product: Intel Data Center GPU Max and Flex Series drivers
+    version: page as of check date (source file read)
+    facts:
+      - Covers Max Series (Ubuntu Server, RHEL, SLES) and Flex Series (Ubuntu Server, RHEL; not SLES).
+      - Users need access to DRM render nodes via the render group.
+      - clinfo and hwinfo are installed as verification tools; packages include intel-level-zero-gpu and intel-opencl-icd.
+    review_by: 2027-01-20
+
+  phoronix-xpu-manager:
+    title: Intel XPU Manager 1.3.3 deprecates Data Center GPU Max and Flex
+    publisher: Phoronix (third party)
+    url: https://phoronix.com/news/Intel-XPU-Manager-1.3.3
+    kind: third-party
+    checked: 2026-10-20
+    status: unverified
+    product: Intel Data Center GPU Max and Flex Series (tooling support)
+    version: XPU Manager 1.3.3 (article dated 2025-10-11)
+    facts:
+      - Reports that XPU Manager 1.3.3 treats Max and Flex as deprecated and points them to the 1.2 series.
+      - Third-party reporting about tool support only; it is not an Intel product lifecycle notice.
+    review_by: 2026-11-20
+
+  intel-crescent-island-2025:
+    title: Intel to expand AI accelerator portfolio with new GPU (Crescent Island)
+    publisher: Intel Newsroom
+    url: https://newsroom.intel.com/artificial-intelligence/intel-to-expand-ai-accelerator-portfolio-with-new-gpu
+    kind: official
+    checked: 2026-10-20
+    status: announced
+    product: Data center GPU code-named Crescent Island
+    version: announced at 2025 OCP Global Summit
+    facts:
+      - Xe3P microarchitecture, 160 GB LPDDR5X, for AI inference.
+      - Designed for air-cooled enterprise servers.
+      - Customer sampling expected in the second half of 2026 (a plan, not a ship date).
+    review_by: 2026-11-20
+
+  intel-ocp-2026:
+    title: Intel at OCP 2026
+    publisher: Intel Newsroom
+    url: https://www.intel.com/content/www/us/en/newsroom/news/artificial-intelligence/intel-at-ocp-2026.html
+    kind: official
+    checked: 2026-10-20
+    status: announced
+    product: Intel GPU D-series, code-named Crescent Island
+    version: page dated 2026-10-12
+    facts:
+      - Names "Intel GPU D-series, code-named Crescent Island" for AI inference.
+      - Image caption - Xe3P, up to 480 GB LPDDR5X, 1.5 TB/s memory bandwidth, 1.3 petaflops FP8 (vendor figures).
+      - Does not say whether it is sampling or shipping.
+    review_by: 2026-11-20
+
+  intel-core-ultra-s3-vpro:
+    title: Intel Core Ultra Series 3 with Intel vPro powers next generation of commercial PCs
+    publisher: Intel Newsroom
+    url: https://newsroom.intel.com/client-computing/intel-core-ultra-series-3-with-vpro-powers-next-gen-pcs-on-18a
+    kind: official
+    checked: 2026-10-20
+    status: available
+    product: Intel Core Ultra Series 3 (with vPro)
+    version: announced 2026-03-25; PCs available from 2026-03-31
+    facts:
+      - Vendor claim "up to 4x AI performance" vs four-year-old systems; the release does not give TOPS figures.
+    review_by: 2027-04-20
+
+  liliputing-panther-lake:
+    title: Intel launches Core Ultra Series 3 (Panther Lake) mobile chips
+    publisher: Liliputing (third party)
+    url: https://liliputing.com/intel-launches-core-ultra-series-3-panther-lake-mobile-chips/
+    kind: third-party
+    checked: 2026-10-20
+    status: unverified
+    product: Intel Core Ultra Series 3 (Panther Lake)
+    version: article dated 2026-01-05
+    facts:
+      - Reports NPU figures of 46-50 TOPS depending on SKU. Confirm on Intel ARK before quoting.
+    review_by: 2026-11-20
+
+  arxiv-attention:
+    title: Attention Is All You Need (Vaswani et al., 2017)
+    publisher: arXiv
+    url: https://arxiv.org/abs/1706.03762
+    kind: paper
+    checked: 2026-10-20
+    status: concept
+    product: n/a
+    version: n/a
+    facts:
+      - Introduces the Transformer architecture built on attention.
+    review_by: 2028-10-20
+
+  arxiv-pagedattention:
+    title: Efficient Memory Management for LLM Serving with PagedAttention (Kwon et al., 2023)
+    publisher: arXiv
+    url: https://arxiv.org/abs/2309.06180
+    kind: paper
+    checked: 2026-10-20
+    status: concept
+    product: n/a
+    version: n/a
+    facts:
+      - KV cache is large and dynamic; fragmentation limits batch size; vLLM reaches near-zero KV waste.
+    review_by: 2028-10-20
+
+  docker-container:
+    title: What is a container?
+    publisher: Docker documentation
+    url: https://docs.docker.com/get-started/docker-concepts/the-basics/what-is-a-container/
+    kind: upstream
+    checked: 2026-10-20
+    status: concept
+    product: n/a
+    version: n/a
+    facts:
+      - A container is an isolated process with the files it needs; containers share the host kernel, VMs carry their own OS and kernel.
+    review_by: 2028-10-20
+
+  kernel-numa:
+    title: What is NUMA? (Linux kernel documentation)
+    publisher: kernel.org
+    url: https://www.kernel.org/doc/html/latest/mm/numa.html
+    kind: upstream
+    checked: 2026-10-20
+    status: concept
+    product: n/a
+    version: n/a
+    facts:
+      - A NUMA system is built from multiple assemblies, each with its own CPUs, memory and/or I/O.
+    review_by: 2028-10-20
+
+  intel-ethernet-unverified:
+    title: Intel Ethernet adapters for AI clusters
+    publisher: Intel
+    url: https://www.intel.com/content/www/us/en/products/details/ethernet.html
+    kind: official
+    checked: null
+    status: unverified
+    product: Intel Ethernet network adapters
+    version: unknown
+    facts:
+      - Not checked. The app does not quote any Intel Ethernet speeds or models until this is verified.
+    review_by: 2026-11-20
+
+  academy-original:
+    title: Original educational content (Intel AI/ML Technical TPM Academy)
+    publisher: This app
+    url: https://github.com/chennab12/intel-mvp-pilot
+    kind: original
+    checked: 2026-10-20
+    status: concept
+    product: n/a
+    version: n/a
+    facts:
+      - General engineering and program-management practice. No product-specific claims.
+    review_by: 2027-10-20

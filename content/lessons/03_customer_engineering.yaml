@@ -1,0 +1,356 @@
+path: customer-engineering
+lessons:
+  - id: discovery-qualification
+    title: Customer discovery, workload qualification, representative model and dataset
+    level: Working TPM
+    minutes: 25
+    product_specific: false
+    summary: A POC is only as good as the workload it tests.
+    explanation: |
+      **Discovery** finds out what the customer is really trying to do. **Qualification** decides whether a POC is worth running and what it should prove.
+
+      Discovery checklist (short version):
+
+      - Business goal and who decides (economic buyer, technical owner).
+      - Workload: task, model family and size, precision tolerance, traffic pattern.
+      - Targets: latency (P95/P99), throughput, accuracy, cost, power.
+      - Environment: OS, containers, orchestration, existing hardware, security rules.
+      - Timeline, budget, and what happens after a successful POC.
+
+      **Representative model and dataset:** the POC must use a model and inputs that look like production. A tiny demo model or a 50-token prompt proves nothing about a 4,000-token RAG workload. If the customer can't share data, agree on a public dataset with similar length and language distribution.
+
+      **Qualify out** when there is no measurable goal, no decision owner, or the workload can't be represented.
+    why_it_matters: |
+      Most failed POCs fail in discovery: wrong model, unrealistic inputs, or no agreed success criteria. You own getting this right before engineering time is spent.
+    customer_example: |
+      Fictional *Fourth Coffee* wants a "chatbot POC." Discovery reveals: 8B model, prompts averaging 1,800 tokens with RAG, 200 concurrent users at lunch peak, P95 TTFT under 2 seconds, Kubernetes on-prem. The POC now has a defined workload and a public dataset with matching length distribution.
+    visual:
+      type: table
+      caption: Discovery questions and why each matters
+      columns: [Question, Why it matters]
+      rows:
+        - ["What decision will this POC inform?", "Defines success and the decision owner"]
+        - ["Which model and precision?", "Sets memory, software support, accuracy tests"]
+        - ["Input/output token distributions?", "Drives prefill, KV memory and latency"]
+        - ["Peak concurrency and latency target?", "Defines the operating point to report"]
+        - ["Deployment environment?", "Sets software stack and integration work"]
+        - ["What happens if it succeeds?", "Confirms there's a path to production"]
+    exercise:
+      label: Runs on a normal laptop
+      title: Fill a discovery checklist for a fictional customer
+      steps:
+        - Open Senior TPM Toolkit > Customer discovery checklist.
+        - Edit it for Fourth Coffee using the facts above, then download it.
+      lab: lab-qualification-checklist
+    expected_output: |
+      A completed Markdown checklist you can download. No execution is involved.
+    interpretation: |
+      Any blank line in the checklist is a risk. Either fill it or record it as an open question with an owner.
+    misconceptions:
+      - "\"Any model will do for a POC.\" Results don't transfer between model sizes or architectures."
+      - "\"Average latency is enough.\" Users feel P95/P99."
+      - "\"We can define success after the results.\" That turns the POC into a negotiation."
+    senior_questions:
+      - What decision will the customer make with these results, and by when?
+      - Is the model/dataset representative of production, and how do we know?
+      - What would make us stop the POC early?
+    checks:
+      - question: Why must the POC dataset match production input lengths?
+        options:
+          - Input length changes prefill time, KV memory and latency.
+          - It makes the slides look better.
+          - It doesn't matter.
+          - It sets the firmware version.
+        answer: 0
+        explanation: Performance depends strongly on token lengths.
+      - question: Which is a good reason to qualify out of a POC?
+        options:
+          - No measurable success criteria or decision owner.
+          - The customer uses Linux.
+          - The model is 8B parameters.
+          - The customer wants a report.
+        answer: 0
+        explanation: Without a measurable goal and an owner, results won't lead to a decision.
+    sources: [academy-original]
+
+  - id: poc-readiness-inventory
+    title: "Hardware readiness, loaner/POC prerequisites and environment inventory"
+    level: Working TPM
+    minutes: 25
+    product_specific: true
+    summary: Nothing slows a POC like a server that arrives without the right parts or versions.
+    explanation: |
+      **Before the hardware ships** confirm:
+
+      - Server model, CPU SKU, memory population (all channels), PCIe slot layout, power and cooling (for example Gaudi 3 HL-338 PCIe is a 600 W, double-width, air-cooled card; HL-325L OAM is up to 900 W).
+      - Network: NICs, switch ports, RDMA needs, firewall rules, remote access.
+      - OS version on the support matrix, firmware levels, BIOS settings.
+      - Who has root/admin, who can install packages, and data-handling rules.
+
+      **Environment inventory** is a single record of every version that affects results:
+
+      | Layer | Example field |
+      |---|---|
+      | Hardware | Server model, CPU SKU, accelerator SKU and count, memory, NICs |
+      | Firmware | BIOS, device firmware |
+      | OS | Distribution, kernel |
+      | Driver/runtime | Device driver, runtime libraries |
+      | Framework | PyTorch / OpenVINO versions |
+      | Serving/app | vLLM or other engine version, model revision |
+      | Container | Image name and digest |
+
+      Capture it at the start, after any change, and with every benchmark result.
+    why_it_matters: |
+      Without an inventory, nobody can reproduce a result or explain a regression. With one, many escalations end with "these two runs differ in driver version."
+    customer_example: |
+      Fictional *Datum Robotics* receives loaner servers but their racks only provide power for lower-wattage cards. Two weeks are lost. The TPM adds a "power and cooling confirmed in writing" gate before any future loaner ships.
+    visual:
+      type: dot
+      caption: POC readiness gates before testing starts
+      source: |
+        digraph G { rankdir=LR; node [shape=box, style=rounded];
+          A [label="Goals and\nsuccess criteria"]; B [label="Hardware and\nfacility ready"]; C [label="Access and\nsecurity approved"]; D [label="Software stack\non matrix"]; E [label="Inventory\ncaptured"]; F [label="Smoke test\npasses"];
+          A -> B -> C -> D -> E -> F; }
+    exercise:
+      label: Runs on a normal laptop
+      title: Produce an environment inventory
+      steps:
+        - Run the "Environment inventory" lab to capture what this app can see about its own host.
+        - Copy the fields into Senior TPM Toolkit > Environment inventory and complete the rest with fictional values.
+      lab: lab-environment-inventory
+    expected_output: |
+      Measured in-app: OS, Python and package versions of the machine running this app. If you use the hosted app, that's the hosting server, not your laptop.
+    interpretation: |
+      The point is the habit and the format. On a real POC, every row above must be filled from the actual system.
+    misconceptions:
+      - "\"The server will just work when it arrives.\" Power, cooling, network and access all need confirmation."
+      - "\"Inventory is paperwork.\" It's what makes results reproducible."
+      - "\"Version numbers can be collected later.\" Systems change; capture at each result."
+    senior_questions:
+      - Has the facility confirmed power, cooling and rack space for this exact configuration?
+      - Is the OS and software release on the official support matrix?
+      - Where is the inventory stored, and is it attached to every result?
+    checks:
+      - question: When should the environment inventory be captured?
+        options:
+          - At the start, after any change, and with every benchmark result.
+          - Only at the end.
+          - Only if something fails.
+          - Never; engineers remember.
+        answer: 0
+        explanation: Results are only reproducible with the exact versions that produced them.
+      - question: Why confirm power and cooling before a Gaudi 3 loaner ships?
+        options:
+          - Card TDP is high (600 W PCIe, up to 900 W OAM per Intel briefs) and facilities may not support it.
+          - It changes model accuracy.
+          - Gaudi doesn't use power.
+          - It's optional.
+        answer: 0
+        explanation: Facility limits are a common, avoidable POC delay.
+    sources: [gaudi3-pcie-brief, gaudi3-oam-brief, gaudi-support-matrix]
+
+  - id: install-smoke-correctness
+    title: Installation, smoke testing, functional correctness and accuracy validation
+    level: Working TPM
+    minutes: 25
+    product_specific: true
+    summary: Prove it runs, prove it's right, then measure how fast.
+    explanation: |
+      Three test levels, in order:
+
+      1. **Smoke test**: does the stack start and see the device? Examples from official docs: `torch.xpu.is_available()` for PyTorch on Intel GPU; device listing tools such as `hl-smi` for Gaudi; `clinfo` is installed as a verification tool by Intel's data center GPU driver guide.
+      2. **Functional correctness**: does the model produce sensible output? Compare outputs on a fixed set of prompts against a reference platform, with deterministic settings (fixed seed, greedy decoding).
+      3. **Accuracy validation**: does quality meet the agreed metric on the agreed dataset (for example task accuracy or a quality score), within an agreed tolerance of the reference?
+
+      Only after all three pass do performance numbers mean anything. A fast wrong answer is a failed POC.
+
+      Install from official guides, record every version, and note any deviation (extra packages, environment variables, patches).
+    why_it_matters: |
+      Skipping straight to benchmarks is common and costly. A TPM enforces the order and asks for evidence at each level.
+    customer_example: |
+      Fictional *Contoso Pharma* posts impressive throughput numbers in week one. Functional tests later show the model was truncating outputs because of a configuration error. The TPM resets the plan: smoke > correctness > accuracy > performance gates.
+    visual:
+      type: table
+      caption: Test levels and their evidence
+      columns: [Level, Question, Example evidence]
+      rows:
+        - [Smoke, "Does it start and see the device?", "Device listed; framework reports device available"]
+        - [Functional, "Is the output sensible and comparable to reference?", "Same prompts give equivalent outputs"]
+        - [Accuracy, "Does quality meet the agreed bar?", "Metric within tolerance on agreed dataset"]
+        - [Performance, "Is it fast enough at target load?", "TTFT / throughput at agreed operating point"]
+    exercise:
+      label: Runs on a normal laptop
+      title: Write a tiny correctness check
+      steps:
+        - Run the "Correctness check" lab. It compares a "reference" and a "candidate" function on fixed inputs and reports the max difference.
+        - Change the tolerance and see how pass/fail flips.
+      lab: lab-correctness-check
+    expected_output: |
+      Measured in-app: max absolute difference and PASS/FAIL against your tolerance.
+    interpretation: |
+      Tolerance is a decision agreed with the customer, not something to tune after seeing results.
+    misconceptions:
+      - "\"If it runs, it's correct.\" Output can be wrong while the system looks healthy."
+      - "\"Bit-identical outputs are required.\" Different hardware and precision can differ slightly; agree a tolerance."
+      - "\"Accuracy can be checked after the benchmark.\" Then you might have benchmarked a broken setup."
+    senior_questions:
+      - What reference platform and outputs are we comparing against?
+      - What accuracy metric, dataset and tolerance were agreed, and by whom?
+      - Were any non-default flags or patches used during install?
+    checks:
+      - question: In which order should POC testing happen?
+        options:
+          - Performance, then accuracy.
+          - Smoke, functional correctness, accuracy, then performance.
+          - Accuracy only.
+          - Performance only.
+        answer: 1
+        explanation: Performance results are meaningless on a broken or inaccurate setup.
+      - question: What does torch.xpu.is_available() returning True prove?
+        options:
+          - PyTorch can see an Intel GPU.
+          - The model is accurate.
+          - Performance meets target.
+          - All operators are supported.
+        answer: 0
+        explanation: It's a smoke test only.
+    sources: [pytorch-xpu-get-started, gaudi-driver-install, intel-gpu-driver-install]
+
+  - id: repro-minimal-example
+    title: Reproducing customer issues and building a minimal reproducible example
+    level: Working TPM
+    minutes: 25
+    product_specific: false
+    summary: An issue engineering can reproduce is an issue engineering can fix.
+    explanation: |
+      **Reproducing** means making the problem happen again on a system you control.
+
+      Steps:
+
+      1. Capture the customer's exact environment inventory and command/config.
+      2. Reproduce on similar hardware with the same versions.
+      3. If it reproduces, start *shrinking*.
+
+      **Minimal reproducible example (MRE):** the smallest script, model and input that still shows the problem.
+
+      - Replace the customer's private model with a public one of the same architecture, if the issue still appears.
+      - Replace the full app with a short script.
+      - Remove every option that isn't needed to trigger the problem.
+      - Record expected vs actual behavior and how often it happens.
+
+      An MRE uses only public or synthetic data. Never put confidential customer data into a bug report.
+    why_it_matters: |
+      Engineering teams prioritize issues they can reproduce. A clean MRE can turn a weeks-long escalation into a days-long fix and protects confidential data.
+    customer_example: |
+      Fictional *Relecloud* reports intermittent hangs in a large service. The TPM coordinates a repro: same versions, public model of the same family, a 30-line script, and a loop that triggers the hang 1 in 20 runs. Engineering finds the cause within days.
+    visual:
+      type: dot
+      caption: Shrinking a customer issue into an MRE
+      source: |
+        digraph G { rankdir=LR; node [shape=box, style=rounded];
+          A [label="Customer system\n(full app, private model)"]; B [label="Same versions,\nlab system"]; C [label="Public model,\nsame architecture"]; D [label="Short script,\nminimal options"]; E [label="MRE + inventory\n+ expected vs actual"];
+          A -> B -> C -> D -> E; }
+    exercise:
+      label: Runs on a normal laptop
+      title: Shrink a failing script
+      steps:
+        - Run the "Shrink to an MRE" lab. It shows a 25-line script with a bug and lets you remove lines while checking the bug still appears.
+        - Get it down to the fewest lines that still fail.
+      lab: lab-shrink-mre
+    expected_output: |
+      Computed in-app: each line maps to a predefined, safe Python step (nothing you type is executed, no shell access). The lab re-runs the steps you kept and tells you whether the failure still occurs.
+    interpretation: |
+      Fewer moving parts means faster diagnosis. The final MRE is what goes into the Issue Reproduction Report template.
+    misconceptions:
+      - "\"Send engineering the whole customer app.\" Big repros are slow and may expose confidential data."
+      - "\"It happened once, so it's real.\" Record frequency; intermittent issues need a reliable trigger."
+      - "\"Repro on any hardware is fine.\" Match versions and configuration first."
+    senior_questions:
+      - Does it reproduce on our lab system with the same versions?
+      - What's the smallest input and script that still fails?
+      - Does the MRE contain only public or synthetic data?
+    checks:
+      - question: What makes a good minimal reproducible example?
+        options:
+          - The smallest public script/model/input that still shows the problem, with versions recorded.
+          - The full customer application.
+          - A screenshot of the error.
+          - A description from memory.
+        answer: 0
+        explanation: Small, public, versioned and reliably failing.
+      - question: The customer's model is confidential. What's the best approach?
+        options:
+          - Try a public model with the same architecture and check the issue still occurs.
+          - Email the model to engineering.
+          - Skip the repro.
+          - Guess the cause.
+        answer: 0
+        explanation: Public stand-ins protect data and often reproduce architecture-level issues.
+    sources: [academy-original]
+
+  - id: escalation-acceptance-handoff
+    title: Escalations, ownership, dependency tracking, POC acceptance and production handoff
+    level: Working TPM
+    minutes: 25
+    product_specific: false
+    summary: Keeping many teams moving toward one decision, and finishing cleanly.
+    explanation: |
+      **Ownership**: every open issue has one owner (a person, not a team), a next step and a date.
+
+      **Escalate** when an issue threatens a committed date or success criterion and the normal path isn't moving. A good escalation states: impact, evidence, what's been tried, the specific ask, and the decision deadline.
+
+      **Dependency tracking**: list what each task waits on (hardware delivery, a driver fix, customer data, a security review). The critical path is the chain of dependencies with no slack.
+
+      **POC acceptance criteria**: agreed before testing, measurable, with test method. Example: "P95 TTFT ≤ 1.5 s at 64 concurrent users, 2,000-token inputs, 256-token outputs, BF16, accuracy within 1 point of reference, on the agreed configuration."
+
+      **Production handoff**: when the POC passes, hand over the configuration, inventory, results, known issues, support path and owner. A POC without a handoff often stalls.
+    why_it_matters: |
+      Customer Engineering spans the customer, OEMs, product engineering, software teams and sales. The TPM is the person who keeps ownership clear and makes the "pass/fail" decision objective.
+    customer_example: |
+      Fictional *Woodgrove Health* has three blockers: a firmware update (OEM), a serving bug (software team) and dataset approval (customer legal). The TPM's register shows the dataset approval is on the critical path, so that's where escalation effort goes first.
+    visual:
+      type: table
+      caption: Escalation summary structure
+      columns: [Section, Content]
+      rows:
+        - [Impact, "What business outcome/date is at risk"]
+        - [Evidence, "Data, logs, repro status"]
+        - [Tried so far, "Actions and results"]
+        - [Ask, "Specific decision or resource needed"]
+        - [Deadline, "When a decision is needed and why"]
+    exercise:
+      label: Runs on a normal laptop
+      title: Write acceptance criteria and an escalation
+      steps:
+        - Open Senior TPM Toolkit > POC charter and edit the acceptance criteria for Woodgrove Health.
+        - Open Executive escalation summary and fill it for the dataset-approval blocker.
+    expected_output: |
+      Two downloadable documents. No execution involved.
+    interpretation: |
+      If you can't write a measurable criterion, you've found a discovery gap; go back and ask.
+    misconceptions:
+      - "\"Escalating is a failure.\" Escalating early with evidence is good practice."
+      - "\"A team can own an issue.\" Name one person."
+      - "\"POC passed means done.\" Without a handoff, production stalls."
+    senior_questions:
+      - Which open item is on the critical path, and who owns it?
+      - Are acceptance criteria measurable and signed off by the customer?
+      - Who supports this system after the handoff, and how are issues routed?
+    checks:
+      - question: Which acceptance criterion is measurable?
+        options:
+          - "\"Fast enough for users.\""
+          - "\"P95 TTFT ≤ 1.5 s at 64 concurrent users with 2,000-token inputs on the agreed configuration.\""
+          - "\"Better than last year.\""
+          - "\"Customer is happy.\""
+        answer: 1
+        explanation: It names the metric, threshold, load, inputs and configuration.
+      - question: What should an escalation include?
+        options:
+          - Impact, evidence, what's been tried, the specific ask and a deadline.
+          - Only the error message.
+          - A request to "please help."
+          - The full chat history.
+        answer: 0
+        explanation: Decision-makers need impact, evidence and a clear ask.
+    sources: [academy-original]

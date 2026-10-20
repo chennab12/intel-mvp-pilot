@@ -1,0 +1,112 @@
+# Glossary. category is one of: Hardware, Memory & I/O, Software stack, AI/ML, LLM serving, Performance, Program management, Intel products
+# `source` (optional) points at content/sources.yaml for product-specific terms.
+terms:
+  - {term: CPU, category: Hardware, definition: "Central processing unit. General-purpose processor that runs the OS and most software; Intel Xeon (data center) and Core Ultra (client) are examples."}
+  - {term: GPU, category: Hardware, definition: "Graphics processing unit. Thousands of parallel lanes suited to matrix math; used for graphics and AI."}
+  - {term: NPU, category: Hardware, definition: "Neural processing unit. Low-power engine for running trained models on client/edge devices.", source: openvino-devices}
+  - {term: AI accelerator, category: Hardware, definition: "Purpose-built chip for deep learning, such as Intel Gaudi. Has its own software stack."}
+  - {term: Core, category: Hardware, definition: "One independent execution unit inside a CPU."}
+  - {term: Thread (hardware), category: Hardware, definition: "An instruction stream a core runs. With simultaneous multithreading, one core can run two."}
+  - {term: Socket, category: Hardware, definition: "The physical slot (and CPU package) on a motherboard. Servers often have one or two."}
+  - {term: NUMA, category: Hardware, definition: "Non-uniform memory access. Each CPU group has near memory that's faster than far memory attached to another group.", source: kernel-numa}
+  - {term: Cache, category: Hardware, definition: "Small, fast memory on the CPU (L1/L2/L3) that holds recently used data."}
+  - {term: Intel AMX, category: Intel products, definition: "Advanced Matrix Extensions. Matrix engine built into Intel Xeon cores for deep-learning work on the CPU; availability varies by SKU.", source: intel-amx-overview}
+  - {term: AVX-512, category: Hardware, definition: "Wide vector instructions on many Intel CPUs, listed on ARK pages such as Xeon 696X.", source: ark-xeon-696x}
+  - {term: XMX, category: Intel products, definition: "Xe Matrix Extensions. Matrix engines in Intel Xe GPUs; ARK lists 256 for Arc Pro B70.", source: ark-arc-pro-b70}
+  - {term: Xe-core, category: Intel products, definition: "The building block of Intel Xe GPUs; Arc Pro B60 has 20, B70 has 32.", source: ark-arc-pro-b70}
+  - {term: TPC, category: Intel products, definition: "Tensor Processor Core, a programmable compute engine in Gaudi; Gaudi 3 HL-338 lists 64.", source: gaudi3-pcie-brief}
+  - {term: MME, category: Intel products, definition: "Matrix Multiplication Engine in Gaudi; Gaudi 3 HL-338 lists 8.", source: gaudi3-pcie-brief}
+  - {term: OAM, category: Hardware, definition: "OCP Accelerator Module, a mezzanine card form factor for accelerators (for example Gaudi 3 HL-325L).", source: gaudi3-oam-brief}
+  - {term: TDP / TBP, category: Hardware, definition: "Thermal design power / total board power. The power level a cooling design must handle; not the same as measured power under load."}
+  - {term: DDR5, category: Memory & I/O, definition: "Current generation of standard server/PC memory attached to the CPU."}
+  - {term: MRDIMM, category: Memory & I/O, definition: "Multiplexed-rank DIMM. Higher-speed memory module supported on some Xeon 6 SKUs (ARK lists MRDIMM 8000 for Xeon 696X).", source: ark-xeon-696x}
+  - {term: HBM, category: Memory & I/O, definition: "High-bandwidth memory stacked next to the processor. Gaudi 3 uses 128 GB HBM2e.", source: gaudi3-pcie-brief}
+  - {term: GDDR, category: Memory & I/O, definition: "Graphics DDR memory on GPU cards. Arc Pro B60 uses 24 GB GDDR6.", source: arc-pro-b60-datasheet}
+  - {term: LPDDR5X, category: Memory & I/O, definition: "Low-power DDR memory. Intel's announced Crescent Island data center GPU uses it.", source: intel-crescent-island-2025}
+  - {term: Memory capacity, category: Memory & I/O, definition: "How much data fits (GB). Decides whether a model fits."}
+  - {term: Memory bandwidth, category: Memory & I/O, definition: "How fast data moves to/from memory (GB/s). Often limits LLM decode speed."}
+  - {term: Latency (memory), category: Memory & I/O, definition: "Time for a single memory access, in nanoseconds."}
+  - {term: PCIe, category: Memory & I/O, definition: "The expansion bus connecting cards to the CPU. Generation and lane count set its speed."}
+  - {term: Ethernet, category: Memory & I/O, definition: "Standard network technology between servers; Gaudi also uses it between accelerators."}
+  - {term: RDMA, category: Memory & I/O, definition: "Remote direct memory access. Moves data between machines' memory without involving their CPUs."}
+  - {term: RoCE, category: Memory & I/O, definition: "RDMA over Converged Ethernet. Gaudi 3 HL-325L integrates 24 x 200 GbE RoCE v2 ports.", source: gaudi3-oam-brief}
+  - {term: Scale-up, category: Memory & I/O, definition: "Adding devices inside one server or tightly coupled group."}
+  - {term: Scale-out, category: Memory & I/O, definition: "Adding servers connected over the network."}
+  - {term: Firmware, category: Software stack, definition: "Software that runs on the device itself and starts it up."}
+  - {term: Kernel driver, category: Software stack, definition: "OS component that lets Linux talk to a device."}
+  - {term: Runtime, category: Software stack, definition: "User-space libraries/APIs programs use to send work to a device."}
+  - {term: Level Zero, category: Software stack, definition: "Low-level runtime interface for Intel GPUs; Intel's driver guide installs intel-level-zero-gpu.", source: intel-gpu-driver-install}
+  - {term: oneAPI, category: Software stack, definition: "Intel-led cross-architecture programming model and toolkits; Arc Pro B60's datasheet lists it.", source: arc-pro-b60-datasheet}
+  - {term: SYCL, category: Software stack, definition: "C++ programming standard for heterogeneous devices used by oneAPI."}
+  - {term: oneDNN, category: Software stack, definition: "Open-source deep learning kernel library (UXL Foundation) used by PyTorch, OpenVINO and TensorFlow.", source: onednn-repo}
+  - {term: OpenVINO, category: Software stack, definition: "Intel's open-source inference toolkit with CPU, GPU and NPU device plugins.", source: openvino-devices}
+  - {term: PyTorch XPU, category: Software stack, definition: "Native PyTorch backend for Intel GPUs, accessed through torch.xpu.", source: pytorch-xpu-get-started}
+  - {term: IPEX, category: Software stack, definition: "Intel Extension for PyTorch. End of life by end of March 2026; Intel recommends native PyTorch.", source: ipex-eol}
+  - {term: Intel Gaudi software, category: Software stack, definition: "The software stack (driver, runtime, PyTorch integration) for Gaudi accelerators; versions listed in the Support Matrix.", source: gaudi-support-matrix}
+  - {term: vLLM, category: LLM serving, definition: "Open-source LLM serving engine; supports Intel XPU and, through the vllm-gaudi plugin, Gaudi.", source: vllm-gpu-install}
+  - {term: vllm-gaudi, category: LLM serving, definition: "Community-maintained vLLM hardware plugin for Intel Gaudi.", source: vllm-gaudi-repo}
+  - {term: Container, category: Software stack, definition: "An isolated process with the files it needs, sharing the host kernel.", source: docker-container}
+  - {term: Virtual machine, category: Software stack, definition: "A software computer with its own OS and kernel."}
+  - {term: Support matrix, category: Software stack, definition: "Official list of validated combinations of OS, firmware, driver and framework versions."}
+  - {term: render group, category: Software stack, definition: "Linux group granting access to GPU render nodes; Intel's driver guide requires it for GPU users.", source: intel-gpu-driver-install}
+  - {term: Machine learning, category: AI/ML, definition: "Building software that learns patterns from data."}
+  - {term: Deep learning, category: AI/ML, definition: "Machine learning with large multi-layer neural networks."}
+  - {term: Training, category: AI/ML, definition: "Learning model parameters from data."}
+  - {term: Fine-tuning, category: AI/ML, definition: "Adapting an existing model with a smaller, specific dataset."}
+  - {term: Inference, category: AI/ML, definition: "Using a trained model to produce outputs."}
+  - {term: Evaluation, category: AI/ML, definition: "Measuring model quality on agreed data and metrics."}
+  - {term: Tensor, category: AI/ML, definition: "A multi-dimensional array of numbers."}
+  - {term: Parameters, category: AI/ML, definition: "The learned weights in a model; '7B' means about 7 billion."}
+  - {term: Precision, category: AI/ML, definition: "Number of bits per value: FP32, BF16, FP16, FP8, INT8, INT4."}
+  - {term: BF16, category: AI/ML, definition: "16-bit floating point with FP32's range; common for training and inference."}
+  - {term: FP8, category: AI/ML, definition: "8-bit floating point; Gaudi 3 lists FP8 among supported data types.", source: gaudi3-oam-brief}
+  - {term: Quantization, category: AI/ML, definition: "Using lower precision to save memory/compute, which can affect accuracy."}
+  - {term: Transformer, category: AI/ML, definition: "Neural network architecture based on attention, used by modern LLMs.", source: arxiv-attention}
+  - {term: Attention, category: AI/ML, definition: "Mechanism letting each token weigh information from other tokens."}
+  - {term: Token, category: LLM serving, definition: "Unit of text a model reads/writes, often a word piece."}
+  - {term: Tokenizer, category: LLM serving, definition: "Converts text to tokens; differs by model."}
+  - {term: Context window, category: LLM serving, definition: "Maximum tokens (input + output) a model handles at once."}
+  - {term: Embedding, category: LLM serving, definition: "Vector of numbers representing meaning; similar texts have nearby embeddings."}
+  - {term: RAG, category: LLM serving, definition: "Retrieval-augmented generation: retrieve relevant documents and add them to the prompt."}
+  - {term: Vector database, category: LLM serving, definition: "Database that finds items by embedding similarity."}
+  - {term: Prefill, category: LLM serving, definition: "Processing the full prompt; usually compute-bound; drives TTFT."}
+  - {term: Decode, category: LLM serving, definition: "Generating output tokens one at a time; usually memory-bandwidth-bound."}
+  - {term: KV cache, category: LLM serving, definition: "Stored keys and values for past tokens; grows with tokens and concurrent sequences.", source: arxiv-pagedattention}
+  - {term: GQA, category: LLM serving, definition: "Grouped-query attention: fewer KV heads than query heads, shrinking the KV cache."}
+  - {term: PagedAttention, category: LLM serving, definition: "vLLM's technique for managing KV cache in pages to reduce waste.", source: arxiv-pagedattention}
+  - {term: Batching, category: LLM serving, definition: "Processing multiple requests together to share weight reads."}
+  - {term: Concurrency, category: LLM serving, definition: "Number of requests in flight at once."}
+  - {term: TTFT, category: Performance, definition: "Time to first token: request sent to first output token, including queueing and prefill.", source: vllm-bench-cli}
+  - {term: ITL, category: Performance, definition: "Inter-token latency: gap between consecutive output tokens.", source: vllm-bench-cli}
+  - {term: TPOT, category: Performance, definition: "Time per output token: (E2E − TTFT) / (output tokens − 1).", source: vllm-bench-cli}
+  - {term: End-to-end latency, category: Performance, definition: "Request sent to last token received."}
+  - {term: Throughput, category: Performance, definition: "Work per unit time; for LLMs usually tokens/s, per request or aggregate."}
+  - {term: P50 / P95 / P99, category: Performance, definition: "Percentiles: the latency that 50%/95%/99% of requests meet or beat."}
+  - {term: Warm-up, category: Performance, definition: "Initial runs that include one-time costs like compilation and allocation."}
+  - {term: Steady state, category: Performance, definition: "Period after warm-up when results stop drifting."}
+  - {term: Compute-bound, category: Performance, definition: "Limited by math throughput."}
+  - {term: Memory-bound, category: Performance, definition: "Limited by memory bandwidth."}
+  - {term: Communication-bound, category: Performance, definition: "Limited by data exchange between devices or nodes."}
+  - {term: Arithmetic intensity, category: Performance, definition: "Operations per byte moved; low means memory-bound, high means compute-bound."}
+  - {term: Utilization, category: Performance, definition: "Share of time or capacity a device is busy; check how the tool defines it."}
+  - {term: Joules per token, category: Performance, definition: "Energy per token = average power (W) ÷ tokens per second."}
+  - {term: Cost per million tokens, category: Performance, definition: "Hourly cost ÷ (tokens/s × 3,600) × 1,000,000, adjusted for utilization."}
+  - {term: Soak test, category: Performance, definition: "Long-duration run (for example 24-72 hours) to find stability problems."}
+  - {term: POC, category: Program management, definition: "Proof of concept: a time-boxed test that a solution meets agreed criteria."}
+  - {term: Discovery, category: Program management, definition: "Finding out the customer's goals, workload, constraints and decision process."}
+  - {term: Workload qualification, category: Program management, definition: "Deciding whether a POC is worth running and what it must prove."}
+  - {term: Acceptance criteria, category: Program management, definition: "Measurable conditions the customer signs off for success."}
+  - {term: Release gate, category: Program management, definition: "Checkpoint with required evidence before a deliverable ships."}
+  - {term: Critical path, category: Program management, definition: "Longest chain of dependent tasks; delays on it delay the end date."}
+  - {term: Risk register, category: Program management, definition: "List of risks with likelihood, impact, owner, mitigation and trigger."}
+  - {term: MRE, category: Program management, definition: "Minimal reproducible example: smallest public script/model/input that still shows the problem."}
+  - {term: Escalation, category: Program management, definition: "Raising an issue to decision-makers with impact, evidence and a specific ask."}
+  - {term: Go/no-go, category: Program management, definition: "Decision to proceed, based on criteria, evidence and risks."}
+  - {term: Environment inventory, category: Program management, definition: "Record of every hardware/software version affecting results."}
+  - {term: Smoke test, category: Program management, definition: "Quick check that the system starts and sees the device."}
+  - {term: Crescent Island, category: Intel products, definition: "Codename for an announced Intel data center inference GPU; an Intel page calls it Intel GPU D-series. Announced, not described as shipping on pages checked.", source: intel-ocp-2026}
+  - {term: Arc Pro B60, category: Intel products, definition: "Intel workstation GPU (Xe2), 24 GB GDDR6, sold as partner-branded cards.", source: arc-pro-b60-datasheet}
+  - {term: Arc Pro B70, category: Intel products, definition: "Intel workstation GPU (Battlemage), 32 GB GDDR6, launched Q1'26 per ARK.", source: ark-arc-pro-b70}
+  - {term: Gaudi 3, category: Intel products, definition: "Intel AI accelerator with 128 GB HBM2e and integrated RoCE networking.", source: gaudi3-oam-brief}
+  - {term: Xeon 6, category: Intel products, definition: "Intel data center CPU family (P-core SKUs formerly Granite Rapids).", source: ark-xeon-696x}
+  - {term: Core Ultra, category: Intel products, definition: "Intel client processor family combining CPU, GPU and NPU.", source: intel-core-ultra-s3-vpro}

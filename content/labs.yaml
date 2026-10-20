@@ -1,0 +1,333 @@
+# Practical Labs.
+# label: "Runs on a normal laptop" | "Simulation only" | "Requires specified Intel hardware"
+# runner: name of a safe, predefined function in utils/labs.py that the app can run in-process.
+#         The app never executes text typed by users and never runs shell commands.
+# link:   another app section that hosts the interactive part (for simulation labs).
+labs:
+  - id: lab-system-inventory
+    title: What processors does this machine have?
+    label: Runs on a normal laptop
+    minutes: 10
+    lesson: cpu-gpu-npu-accelerator
+    objective: Read basic CPU information the way an engineer would, and learn which commands to ask a customer for.
+    steps:
+      - Click Run to see what Python can report about the machine running this app.
+      - Then run the commands below on your own laptop (Linux/WSL) and compare.
+    code: |
+      lscpu | head -20
+      lspci | grep -i -E "vga|display|3d|processing"
+    runner: system_inventory
+    expected: The in-app run reports the OS, machine architecture and logical CPU count of the machine running this app (your laptop if you run locally, the hosting server if you use a hosted copy).
+    interpretation: Logical CPUs count hardware threads, not cores. GPUs and NPUs need OS tools (Task Manager, lspci) to list.
+
+  - id: lab-environment-inventory
+    title: Capture an environment inventory
+    label: Runs on a normal laptop
+    minutes: 10
+    lesson: poc-readiness-inventory
+    objective: Produce the version record that makes results reproducible.
+    steps:
+      - Click Run to capture OS, Python and key package versions.
+      - Download the inventory as JSON and paste the values into Senior TPM Toolkit > Environment inventory.
+    code: |
+      import platform, sys
+      from importlib.metadata import version
+      print(platform.platform(), sys.version.split()[0])
+      for p in ["numpy", "pandas", "streamlit", "plotly", "PyYAML"]:
+          print(p, version(p))
+    runner: environment_inventory
+    expected: A table of package versions measured from the running app's environment.
+    interpretation: On a real POC add hardware, firmware, driver, runtime, framework, serving engine and container digest rows.
+
+  - id: lab-bandwidth-vs-compute
+    title: Memory bandwidth vs compute
+    label: Runs on a normal laptop
+    minutes: 10
+    lesson: memory-types-bandwidth
+    objective: See a memory-bound and a compute-bound operation on the same machine.
+    steps:
+      - Choose an array size and click Run. The lab times an array copy and a matrix multiply with NumPy.
+      - Compare GB/s (copy) with GFLOP/s (matmul).
+    code: |
+      import numpy as np, time
+      a = np.ones(25_000_000, dtype=np.float32)
+      t = time.perf_counter(); b = a.copy(); dt = time.perf_counter() - t
+      print("copy GB/s", 2 * a.nbytes / 1e9 / dt)
+      m = np.random.rand(1024, 1024).astype(np.float32)
+      t = time.perf_counter(); m @ m; dt = time.perf_counter() - t
+      print("matmul GFLOP/s", 2 * 1024**3 / 1e9 / dt)
+    runner: bandwidth_vs_compute
+    expected: Measured values vary by machine. The matmul's GFLOP/s is usually far higher than the copy's GB/s, because matmul reuses each byte many times.
+    interpretation: Low arithmetic intensity (copy) is limited by memory; high intensity (matmul) by compute. LLM decode is closer to the copy case.
+
+  - id: lab-quantization-error
+    title: Quantization error
+    label: Runs on a normal laptop
+    minutes: 10
+    lesson: tensors-precision-quantization
+    objective: Measure memory savings and error from INT8 and 4-bit style rounding.
+    steps:
+      - Click Run. The lab quantizes a fixed random array (seed 0) per-tensor and reports size and mean absolute error.
+      - Turn on the outlier channels, then switch to per-channel scaling and compare the error.
+    code: |
+      import numpy as np
+      x = np.random.default_rng(0).normal(size=100_000).astype(np.float32)
+      scale = np.abs(x).max() / 127
+      q = np.round(x / scale).astype(np.int8)
+      print(x.nbytes, q.nbytes, np.abs(q * scale - x).mean())
+    runner: quantization_error
+    expected: "Measured in-app with seed 0: FP32 400,000 bytes, INT8 100,000 bytes, INT8 mean error ~0.009; 4-bit error is larger."
+    interpretation: Small numeric error can still change model answers. Only the model's own evaluation can tell you if it matters.
+
+  - id: lab-token-counting
+    title: Token counting and prompt growth
+    label: Runs on a normal laptop
+    minutes: 10
+    lesson: transformers-tokens-rag
+    objective: See how retrieved documents grow input length.
+    steps:
+      - Paste text, choose how many retrieved chunks to add, and click Run.
+      - The count uses a simple word-piece approximation, labeled as an estimate.
+    code: |
+      import re
+      text = "Intel Gaudi 3 has 128 GB of HBM2e."
+      pieces = re.findall(r"\w+|[^\w\s]", text)
+      print(len(pieces), "pieces (rough estimate, not a real tokenizer)")
+    runner: token_counting
+    expected: An estimated token count for your text and for the prompt with retrieved chunks.
+    interpretation: Real counts depend on the model's tokenizer. Use the customer's tokenizer for POC numbers.
+
+  - id: lab-latency-percentiles
+    title: Latency percentiles from real timings
+    label: Runs on a normal laptop
+    minutes: 10
+    lesson: latency-throughput-metrics
+    objective: Compute mean, P50, P95, P99 from repeated measurements.
+    steps:
+      - Choose the number of runs and click Run. The lab times a small Python function repeatedly.
+      - Look at the histogram and the gap between P50 and P99.
+    code: |
+      import time
+      times = []
+      for _ in range(200):
+          t = time.perf_counter(); sum(i*i for i in range(20000)); times.append(time.perf_counter() - t)
+    runner: latency_percentiles
+    expected: Measured in-app. Tail percentiles are higher than the median; the exact values depend on the machine.
+    interpretation: Report percentiles, not just averages. Investigate large P99/P50 gaps.
+
+  - id: lab-warmup
+    title: Warm-up effect
+    label: Runs on a normal laptop
+    minutes: 5
+    lesson: measurement-hygiene
+    objective: See why first runs are slower and must be reported separately.
+    steps:
+      - Click Run. The function builds a lookup table on first call (like a compile or allocation step), then reuses it.
+    code: |
+      import functools, time
+      @functools.lru_cache
+      def table(n): return [i*i for i in range(n)]
+      for i in range(5):
+          t = time.perf_counter(); table(2_000_000); print(i, time.perf_counter() - t)
+    runner: warmup
+    expected: Measured in-app. Call 1 is much slower than calls 2-5.
+    interpretation: Exclude warm-up from steady-state numbers; report cold start separately when it matters.
+
+  - id: lab-pipeline-bottleneck
+    title: Find the slow stage in a pipeline
+    label: Runs on a normal laptop
+    minutes: 10
+    lesson: host-accelerator-cooperation
+    objective: Identify the dominant stage and reason about what speeding up each stage would do.
+    steps:
+      - Set the work size of each toy stage (preprocess, compute, postprocess) and click Run.
+      - The lab times each stage and shows its share of total time.
+    code: |
+      # Three toy stages timed with time.perf_counter() - see utils/labs.py
+    runner: pipeline_bottleneck
+    expected: Measured in-app stage times and shares.
+    interpretation: "Speeding up a stage with a 10% share can save at most 10% of total time."
+
+  - id: lab-correctness-check
+    title: Correctness check with a tolerance
+    label: Runs on a normal laptop
+    minutes: 10
+    lesson: install-smoke-correctness
+    objective: Compare a reference and a lower-precision candidate on fixed inputs.
+    steps:
+      - Choose the candidate precision and the tolerance, then click Run.
+      - The lab computes a small fixed matrix-vector product in FP64 (reference) and in the candidate precision.
+    code: |
+      import numpy as np
+      rng = np.random.default_rng(1)
+      w, x = rng.normal(size=(256, 256)), rng.normal(size=256)
+      ref = w @ x
+      cand = (w.astype(np.float16) @ x.astype(np.float16)).astype(np.float64)
+      print(np.abs(ref - cand).max())
+    runner: correctness_check
+    expected: Measured in-app max absolute difference and PASS/FAIL against your tolerance.
+    interpretation: Agree tolerances with the customer before testing.
+
+  - id: lab-shrink-mre
+    title: Shrink to a minimal reproducible example
+    label: Runs on a normal laptop
+    minutes: 15
+    lesson: repro-minimal-example
+    objective: Remove steps from a failing script while keeping the failure.
+    steps:
+      - Untick steps you think are irrelevant and click Run.
+      - Each step maps to a predefined, safe Python function. Nothing you type is executed.
+      - Find the smallest set of steps that still fails.
+    code: |
+      # The lab's 'script' is a fixed list of steps defined in utils/labs.py
+    runner: shrink_mre
+    expected: The lab reports FAIL while the bug-triggering steps remain, and PASS once you remove one of them.
+    interpretation: The minimal set is what goes in the Issue Reproduction Report.
+
+  - id: lab-critical-path
+    title: Critical path calculator
+    label: Runs on a normal laptop
+    minutes: 15
+    lesson: critical-path-risk-blockers
+    objective: Compute the critical path of an editable POC plan.
+    steps:
+      - Edit task durations (days) and dependencies in the table, then click Run.
+      - The lab finds the longest path and total duration.
+    code: |
+      # Longest path through a dependency graph (see utils/calculators.critical_path)
+    runner: critical_path
+    expected: The critical path and total duration for your edited plan.
+    interpretation: Only reducing tasks on the critical path moves the end date.
+
+  - id: lab-requirement-check
+    title: Requirement rewriter
+    label: Runs on a normal laptop
+    minutes: 10
+    lesson: requirements-acceptance-gates
+    objective: Check a requirement for metric, percentile, threshold, load, inputs and configuration.
+    steps:
+      - Type a requirement and click Run. A simple keyword check reports which elements are present.
+    code: |
+      # Keyword checks in utils/calculators.requirement_check
+    runner: requirement_check
+    expected: A checklist of found/missing elements (rule-based, not AI).
+    interpretation: Missing elements are future disagreements.
+
+  - id: lab-update-checker
+    title: Executive update length checker
+    label: Runs on a normal laptop
+    minutes: 5
+    lesson: communicating-go-no-go
+    objective: Keep the bottom line short and complete.
+    steps:
+      - Type your bottom-line sentence and click Run.
+    code: |
+      # Word count and status/reason/ask keyword check in utils/calculators.update_check
+    runner: update_checker
+    expected: Word count and whether a status word, a reason and an ask are present (rule-based).
+    interpretation: Aim for under 30 words with status, reason and ask.
+
+  - id: lab-classify-workload
+    title: Classify the workload
+    label: Runs on a normal laptop
+    minutes: 10
+    lesson: ai-ml-lifecycle
+    objective: Label fictional customer requests as training, fine-tuning, inference or evaluation.
+    steps:
+      - Pick a label for each request and click Run to score.
+    code: |
+      # Five fictional requests, scored in-app
+    runner: classify_workload
+    expected: A score out of 5 with explanations.
+    interpretation: Most enterprise requests are inference; confirm before sizing.
+
+  - id: lab-scaling-efficiency
+    title: Scaling efficiency (toy model)
+    label: Simulation only
+    minutes: 10
+    lesson: interconnects-scale
+    objective: See how communication overhead limits multi-device speed-up.
+    steps:
+      - Move the communication fraction slider and the device count. The chart updates.
+    code: |
+      def speedup(n, comm):
+          return 1 / ((1 / n) * (1 - comm) + comm * (n > 1))
+    runner: scaling_efficiency
+    expected: Simulated curve. Not a measurement of any product.
+    interpretation: Even modest communication overhead flattens scaling; measure communication time on real systems.
+
+  - id: lab-batching-sim
+    title: Throughput vs latency as concurrency grows
+    label: Simulation only
+    minutes: 10
+    lesson: prefill-decode-kv
+    objective: Explore the tradeoff between aggregate throughput and per-user speed.
+    steps:
+      - Open Performance Playground > Throughput vs latency.
+    link: Performance Playground
+    runner: null
+    code: ""
+    expected: Simulated curves with formulas shown.
+    interpretation: Choose the operating point that meets latency targets.
+
+  - id: lab-qualification-checklist
+    title: Qualify a workload
+    label: Simulation only
+    minutes: 15
+    lesson: discovery-qualification
+    objective: Practice discovery decisions with evidence-based scoring.
+    steps:
+      - Open Customer POC Simulator and play "Northwind chatbot sizing".
+    link: Customer POC Simulator
+    runner: null
+    code: ""
+    expected: A reasoning score and an evidence completeness score.
+    interpretation: Ask the decision-driving questions first.
+
+  - id: lab-classify-issue
+    title: Classify an issue by evidence
+    label: Simulation only
+    minutes: 15
+    lesson: hw-limit-vs-sw-gap
+    objective: Gather evidence before choosing hardware, software or configuration as the cause.
+    steps:
+      - Open Troubleshooting Clinic and work the "Unsupported model/operator" case.
+    link: Troubleshooting Clinic
+    runner: null
+    code: ""
+    expected: A score that rewards evidence-first reasoning.
+    interpretation: A correct guess without evidence is not defensible.
+
+  - id: lab-hw-xpu-check
+    title: Confirm PyTorch sees an Intel GPU
+    label: Requires specified Intel hardware
+    hardware: Intel GPU listed on the PyTorch "Getting Started on Intel GPU" page (for example Arc B-Series), with the Intel GPU driver installed, on Linux or Windows
+    minutes: 20
+    lesson: tracing-software-stack
+    objective: Run the official smoke test for the PyTorch XPU backend.
+    steps:
+      - Install the Intel GPU driver following Intel's guide for your GPU and OS.
+      - Install PyTorch from the XPU wheel index.
+      - Run the availability check.
+    code: |
+      pip3 install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/xpu
+      python -c "import torch; print(torch.xpu.is_available())"
+    runner: null
+    expected: "Illustrative (not executed by this app): True. If False, the PyTorch docs advise double-checking the GPU driver installation."
+    interpretation: Device visibility is a smoke test only; run correctness and accuracy next.
+
+  - id: lab-hw-gaudi-check
+    title: List Gaudi devices
+    label: Requires specified Intel hardware
+    hardware: Server with Intel Gaudi 2 or Gaudi 3 and Intel Gaudi software installed per docs.habana.ai
+    minutes: 20
+    lesson: software-layers
+    objective: Confirm the driver sees the devices and record versions against the Support Matrix.
+    steps:
+      - Run hl-smi and record device count and driver/firmware versions.
+      - Compare the versions with the Support Matrix for your Gaudi software release.
+    code: |
+      hl-smi
+    runner: null
+    expected: Illustrative (not executed by this app) - a table listing each device. Compare versions with the Support Matrix.
+    interpretation: A device list proves the driver works; it doesn't prove framework pairing is correct.

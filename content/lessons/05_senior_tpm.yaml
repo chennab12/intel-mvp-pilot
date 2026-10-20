@@ -1,0 +1,279 @@
+path: senior-tpm
+lessons:
+  - id: requirements-acceptance-gates
+    title: Turning customer goals into measurable requirements, acceptance criteria and release gates
+    level: Senior TPM
+    minutes: 30
+    product_specific: false
+    summary: '"Make it fast" becomes numbers, test methods and owners.'
+    explanation: |
+      A **customer goal** is a business outcome ("support agents get answers in under 2 seconds"). A **requirement** is measurable and testable ("P95 TTFT ≤ 1.0 s and P95 E2E ≤ 2.0 s for 1,500-token inputs and 150-token outputs at 40 concurrent users").
+
+      Good requirements are **SMART-ish for engineering**:
+
+      - Metric and percentile, threshold, load/operating point, inputs, configuration, measurement method, and owner.
+
+      **Acceptance criteria** are the subset of requirements the customer signs off on for the POC.
+
+      **Release gates** are checkpoints a deliverable (driver, framework release, model enablement) must pass before it ships to the customer: functional, accuracy, performance, stability (for example 24-hour soak), security, documentation, support readiness.
+
+      Write the gates before the work starts, and attach evidence to each gate when it is claimed as passed.
+    why_it_matters: |
+      Senior TPMs prevent arguments at the end by agreeing on measurable definitions at the start. Gates make "is it ready?" a factual question.
+    customer_example: |
+      Fictional *Relecloud* wants "production-ready on Intel by Q3." The TPM converts this into five gates: supported stack version, accuracy within 1 point, P95 latency target at peak load, 72-hour soak with no crashes, and runbook handoff. Each gate has an owner and evidence link.
+    visual:
+      type: table
+      caption: From goal to gate
+      columns: [Level, Example]
+      rows:
+        - [Goal, "Agents get answers fast enough to stay on the call"]
+        - [Requirement, "P95 E2E ≤ 2.0 s, 1,500-token in, 150-token out, 40 concurrent"]
+        - [Acceptance criterion, "Customer signs off the requirement above for the POC"]
+        - [Release gate, "Passes requirement + 72 h soak + accuracy gate on release candidate"]
+    exercise:
+      label: Runs on a normal laptop
+      title: Rewrite vague goals as requirements
+      steps:
+        - Run the "Requirement rewriter" lab. It checks your requirement text for metric, percentile, threshold, load, inputs and configuration.
+        - Try "the system should be fast" and improve it until all checks pass.
+      lab: lab-requirement-check
+    expected_output: |
+      The lab lists which elements your text contains (a simple keyword check, not an AI judgment).
+    interpretation: |
+      Missing elements are the places where the customer and engineering could later disagree.
+    misconceptions:
+      - "\"Requirements are the customer's job.\" The TPM drives them to measurable form."
+      - "\"Gates slow things down.\" They prevent late surprises."
+      - "\"Passed once = passed.\" Gates apply to the specific build/version tested."
+    senior_questions:
+      - What business outcome does each requirement serve?
+      - Who signs off acceptance, and has the measurement method been agreed?
+      - Which release candidate and versions does each gate's evidence apply to?
+    checks:
+      - question: Which element is missing from "P95 TTFT under 1 s"?
+        options:
+          - Load, inputs and configuration.
+          - The metric.
+          - The percentile.
+          - The threshold.
+        answer: 0
+        explanation: Without load, token lengths and configuration it can't be tested reproducibly.
+      - question: What is a release gate?
+        options:
+          - A checkpoint with defined evidence a deliverable must pass before shipping.
+          - A network firewall.
+          - A marketing launch date.
+          - A Git branch.
+        answer: 0
+        explanation: Gates turn readiness into evidence-backed checks.
+    sources: [academy-original]
+
+  - id: critical-path-risk-blockers
+    title: Critical paths, dependencies, risks, mitigations and blocker prioritization
+    level: Senior TPM
+    minutes: 30
+    product_specific: false
+    summary: Spend attention where the schedule actually breaks.
+    explanation: |
+      **Critical path**: the longest chain of dependent tasks; any delay on it delays the end date. Find it by listing tasks, durations and dependencies.
+
+      **Dependencies**: internal (driver fix, model enablement) and external (OEM shipment, customer security review, upstream community release).
+
+      **Risk register**: each risk has description, likelihood, impact, owner, mitigation, trigger (what tells you it's happening) and status.
+
+      **Prioritizing blockers by impact and evidence:**
+
+      - Impact: does it block an acceptance criterion or the critical path? How many customers/deals?
+      - Evidence: is it reproduced, root-caused, or still a symptom?
+      - Effort/ETA: is a workaround available?
+
+      Simple scoring: priority = impact (1-5) × confidence in evidence (1-3), with critical-path items first. The point is to make the reasoning visible, not to be precise.
+    why_it_matters: |
+      Engineering teams get many urgent requests. Senior TPMs earn trust by bringing prioritized, evidence-backed blockers instead of loud ones.
+    customer_example: |
+      Fictional *Datum Robotics* has eight open issues. Only two block acceptance criteria; one of those is reproduced with an MRE. The TPM leads the weekly sync with that one, gets an owner and ETA, and moves cosmetic issues to the backlog.
+    visual:
+      type: dot
+      caption: Critical path (bold) through a POC plan
+      source: |
+        digraph G { rankdir=LR; node [shape=box, style=rounded];
+          A [label="Discovery\n1 wk"]; B [label="Hardware ship\n3 wk", penwidth=3]; C [label="Security review\n2 wk"]; D [label="Install + smoke\n1 wk", penwidth=3]; E [label="Accuracy\n1 wk", penwidth=3]; F [label="Benchmark\n1 wk", penwidth=3]; G [label="Readout", penwidth=3];
+          A -> B [penwidth=3]; A -> C; B -> D [penwidth=3]; C -> D; D -> E [penwidth=3]; E -> F [penwidth=3]; F -> G [penwidth=3]; }
+    exercise:
+      label: Runs on a normal laptop
+      title: Find the critical path and rank blockers
+      steps:
+        - Run the "Critical path" lab. Edit task durations and dependencies and see the critical path recomputed.
+        - Then open Senior TPM Toolkit > Risk and dependency register and rank the fictional blockers.
+      lab: lab-critical-path
+    expected_output: |
+      Computed in-app: the longest path and total duration for your edited plan.
+    interpretation: |
+      Shortening a task that isn't on the critical path doesn't move the end date.
+    misconceptions:
+      - "\"Every blocker is equally urgent.\" Rank by impact and evidence."
+      - "\"Risks are just worries.\" A risk needs an owner, mitigation and trigger."
+      - "\"The critical path never changes.\" Re-compute after every slip."
+    senior_questions:
+      - What's on the critical path this week, and what changed since last week?
+      - Which blockers affect acceptance criteria, and how strong is the evidence?
+      - What is the trigger that would move a risk to an issue?
+    checks:
+      - question: A task not on the critical path slips by 3 days but still has 5 days of slack. Effect on end date?
+        options: [None, 3 days late, 5 days late, 8 days late]
+        answer: 0
+        explanation: It still has slack, so the end date isn't affected (yet).
+      - question: Which blocker should usually be raised first?
+        options:
+          - A reproduced issue blocking an acceptance criterion on the critical path.
+          - A cosmetic UI issue.
+          - An unreproduced rumor.
+          - The oldest ticket.
+        answer: 0
+        explanation: High impact plus strong evidence.
+    sources: [academy-original]
+
+  - id: release-readiness-reviews
+    title: Compatibility, release readiness and running technical reviews
+    level: Senior TPM
+    minutes: 25
+    product_specific: true
+    summary: A release is ready when the whole supported combination is validated, documented and supportable.
+    explanation: |
+      **Compatibility management:** customers run combinations (OS × kernel × firmware × driver × runtime × framework × serving engine × model). Each upstream release can break a combination. Examples from upstream projects:
+
+      - vllm-gaudi releases are built on specific vLLM versions and Gaudi software releases (0.26.0 with Gaudi 1.24.1 and PyTorch 2.11 on the check date), and upstream API changes can break compatibility.
+      - OpenVINO 2026.3.0 raised the CPU plugin's minimum to AVX2 (SSE no longer supported), which affects very old CPUs.
+      - Intel Extension for PyTorch reached end of life by end of March 2026; customers on it need a migration plan.
+
+      **Release-readiness checklist:** supported matrix updated, functional/accuracy/performance gates passed on the release candidate, known issues documented with workarounds, install docs tested from scratch, support team briefed, rollback plan.
+
+      **Running a technical review:** send pre-reads 24-48 hours ahead; state the decision needed; time-box sections; separate facts from opinions; capture decisions, owners and dates; publish notes the same day.
+    why_it_matters: |
+      Breaking a customer's working combination with an update is one of the fastest ways to lose trust. Senior TPMs make compatibility explicit and reviews decisive.
+    customer_example: |
+      Fictional *Lucerne Publishing* plans to upgrade their serving engine. The TPM checks the plugin's release notes, finds it requires a newer Gaudi software release, and schedules a coordinated upgrade with a rollback plan instead of a surprise breakage.
+    visual:
+      type: table
+      caption: Release-readiness gate summary (fictional)
+      columns: [Gate, Status, Evidence]
+      rows:
+        - [Support matrix updated, Pass, "Link to matrix diff"]
+        - [Functional + accuracy on RC, Pass, "Report v3"]
+        - [Performance at target, "At risk", "P95 8% over target at peak"]
+        - [Known issues documented, Pass, "Release notes draft"]
+        - [Rollback plan tested, "Not started", "Owner: fictional SRE lead"]
+    exercise:
+      label: Runs on a normal laptop
+      title: Run a mini release-readiness review
+      steps:
+        - Open Senior TPM Toolkit > Release-readiness checklist.
+        - Mark each item for a fictional release and write a one-line recommendation.
+    expected_output: |
+      A downloadable checklist with your statuses. No execution involved.
+    interpretation: |
+      Any "Not started" gate on the critical path usually means "not ready," regardless of how good the performance numbers look.
+    misconceptions:
+      - "\"Latest versions are always compatible.\" Releases pair with specific versions."
+      - "\"A review is a status meeting.\" Reviews exist to make decisions."
+      - "\"Known issues hurt the release.\" Undocumented ones hurt more."
+    senior_questions:
+      - Which exact combinations are we declaring supported, and where is that published?
+      - What changed upstream since the last validated release?
+      - What's the rollback plan and has it been tested?
+    checks:
+      - question: What did OpenVINO 2026.3.0 change for the CPU plugin?
+        options:
+          - AVX2 became the minimum; SSE is no longer supported.
+          - It removed GPU support.
+          - It requires Gaudi.
+          - Nothing.
+        answer: 0
+        explanation: Per the release notes, the CPU plugin requires AVX2 as a minimum.
+      - question: What is the main purpose of a technical review?
+        options:
+          - Reach and record decisions with owners and dates.
+          - Read status aloud.
+          - Assign blame.
+          - Replace documentation.
+        answer: 0
+        explanation: Reviews are for decisions; status can be async.
+    sources: [vllm-gaudi-repo, openvino-releases, ipex-eol]
+
+  - id: communicating-go-no-go
+    title: Communicating uncertainty and tradeoffs, executive updates and go/no-go recommendations
+    level: Senior TPM
+    minutes: 30
+    product_specific: false
+    summary: Say what you know, how sure you are, and what you recommend.
+    explanation: |
+      **Communicating uncertainty:**
+
+      - State confidence explicitly: "measured, 3 runs, ±4%"; "estimate from formula"; "vendor claim, not yet reproduced"; "unknown until X".
+      - Give ranges, not false precision.
+      - Name what would change the conclusion.
+
+      **Tradeoffs:** present 2-3 options with impact on the customer's criteria (latency, cost, quality, schedule, risk). Recommend one.
+
+      **Executive update (fits on one screen):**
+
+      1. Bottom line (one sentence: on track / at risk / off track, and why).
+      2. What changed since last update.
+      3. Top risks/blockers with owner and date.
+      4. Decisions or help needed.
+
+      **Go/no-go recommendation:** list each acceptance criterion with pass/fail and evidence, open risks, and a clear recommendation: Go, Go with conditions, or No-go (with what would change it).
+
+      **On career growth:** completing these lessons builds skills, but it does not guarantee promotion. Promotion depends on sustained impact, scope, feedback and your organization's own processes.
+    why_it_matters: |
+      Executives act on clarity. Senior TPMs are trusted when their updates are short, honest about uncertainty, and end with a recommendation.
+    customer_example: |
+      Fictional *Woodgrove Health* POC: latency and accuracy pass, cost passes at 70% utilization, a soak test found one crash with a known fix pending. The recommendation is "Go with conditions: production launch after the fix passes a 72-hour soak; fallback plan in place."
+    visual:
+      type: table
+      caption: Go/no-go summary (fictional)
+      columns: [Criterion, Result, Evidence, Confidence]
+      rows:
+        - ["P95 TTFT ≤ 1.0 s @ 40 users", Pass, "Benchmark report v2, 3 runs", "High (measured)"]
+        - ["Accuracy within 1 pt", Pass, "Eval report v2", "High (measured)"]
+        - ["Cost ≤ target per 1M tokens", Pass, "Cost model v1", "Medium (estimate, utilization assumed)"]
+        - ["72 h soak, no crash", Fail, "1 crash, fix pending", "High (measured)"]
+    exercise:
+      label: Runs on a normal laptop
+      title: Write a weekly update and a go/no-go
+      steps:
+        - Open Senior TPM Toolkit > Weekly technical status update and edit it for Woodgrove Health.
+        - Then write a go/no-go in the Executive escalation summary format.
+        - Use the "Update length checker" lab to keep the bottom line under 30 words.
+      lab: lab-update-checker
+    expected_output: |
+      The lab reports word count of your bottom line and whether it names status, reason and ask.
+    interpretation: |
+      If you can't fit the bottom line in one sentence, the recommendation probably isn't clear yet.
+    misconceptions:
+      - "\"Executives want all the details.\" They want the decision and the risks; details go in the appendix."
+      - "\"Admitting uncertainty looks weak.\" False certainty is what damages trust."
+      - "\"Go/no-go is a feeling.\" It's criteria plus evidence plus risk."
+    senior_questions:
+      - What is the recommendation, and what would change it?
+      - Which numbers are measured, estimated or claimed?
+      - What decision or help do we need, from whom, by when?
+    checks:
+      - question: Which line best communicates uncertainty?
+        options:
+          - "\"Throughput is 1,520 tokens/s.\""
+          - "\"Measured 1,480-1,560 tokens/s over 3 runs at 32 users; not yet tested at 64.\""
+          - "\"It's fast.\""
+          - "\"Probably fine.\""
+        answer: 1
+        explanation: It gives a range, method and the boundary of what was tested.
+      - question: Does completing all lessons guarantee promotion to senior TPM?
+        options:
+          - No; it builds skills, but promotion depends on sustained impact and your organization's process.
+          - Yes.
+          - Only if you score 100%.
+          - Only for Intel employees.
+        answer: 0
+        explanation: Skills help; promotion is decided elsewhere.
+    sources: [academy-original]

@@ -1,0 +1,36 @@
+# Curriculum tracks (lesson files declare `path:` with one of these ids)
+tracks:
+  foundations: {name: "1. Foundations I should already know", icon: "🧱"}
+  intel-judgment: {name: "2. Intel product and software judgment", icon: "🧭"}
+  customer-engineering: {name: "3. Customer Engineering execution", icon: "🛠️"}
+  performance: {name: "4. Performance and system reasoning", icon: "📈"}
+  senior-tpm: {name: "5. Senior technical TPM practice", icon: "🎯"}
+
+# Learning paths: ordered lesson lists for three learner levels.
+learning_paths:
+  - id: beginner
+    name: Beginner (new to AI infrastructure)
+    who: You are new to AI/ML hardware and software or want a solid base before customer work.
+    weeks: 4
+    lessons: [cpu-gpu-npu-accelerator, cores-sockets-numa, memory-types-bandwidth, interconnects-scale, linux-basics,
+              software-layers, containers-vms, ai-ml-lifecycle, tensors-precision-quantization, transformers-tokens-rag,
+              prefill-decode-kv, latency-throughput-metrics, discovery-qualification]
+  - id: working
+    name: Working TPM (running customer evaluations)
+    who: You know the basics and are running or joining customer POCs now.
+    weeks: 4
+    lessons: [workload-to-platform, host-accelerator-cooperation, reading-specs-matrices, tracing-software-stack,
+              hw-limit-vs-sw-gap, client-edge-vs-datacenter, discovery-qualification, poc-readiness-inventory,
+              install-smoke-correctness, repro-minimal-example, escalation-acceptance-handoff,
+              latency-throughput-metrics, measurement-hygiene, bottlenecks-utilization-power, memory-budget-kv]
+  - id: senior
+    name: Senior TPM (technical judgment and leadership)
+    who: You run POCs comfortably and want to lead programs, releases and executive decisions.
+    weeks: 3
+    lessons: [hw-limit-vs-sw-gap, measurement-hygiene, memory-budget-kv, quality-cost-tradeoffs,
+              requirements-acceptance-gates, critical-path-risk-blockers, release-readiness-reviews,
+              communicating-go-no-go]
+
+# The three lessons recommended as a starting point for a TPM with ops/SRE background
+# but limited coding and no CS degree.
+recommended_first: [software-layers, prefill-decode-kv, hw-limit-vs-sw-gap]

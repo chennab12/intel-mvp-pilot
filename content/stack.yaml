@@ -1,0 +1,137 @@
+# Software Stack Explorer: one path per device type, top layer first.
+# Commands are for READING ONLY in this app. They are never executed.
+# Where a command was not confirmed in an official source on the check date, `verified: false`
+# and the app shows "Needs verification".
+paths:
+  - id: xeon-cpu
+    name: Intel Xeon CPU inference
+    device: CPU
+    layers:
+      - name: Application / serving
+        examples: "Your service; OpenVINO runtime or PyTorch inside a web server"
+        check: "python -c \"import torch; print(torch.__version__)\""
+        verified: false
+        fails_when: "Thread count or instance layout not tuned for the server"
+      - name: Framework
+        examples: "PyTorch (CPU), OpenVINO CPU device"
+        check: "pip list | grep -i -E \"torch|openvino\""
+        verified: false
+        fails_when: "Old OpenVINO tutorials on very old CPUs: OpenVINO 2026.3.0 CPU plugin requires AVX2"
+        source: openvino-releases
+      - name: Kernel library
+        examples: "oneDNN (used by PyTorch, OpenVINO, TensorFlow)"
+        check: "Bundled with the framework; check framework version"
+        verified: true
+        fails_when: "Rarely the direct cause; mismatched custom builds"
+        source: onednn-repo
+      - name: CPU features
+        examples: "AVX-512, Intel AMX (SKU-dependent)"
+        check: "lscpu | grep -o -E 'avx512[a-z_]*|amx[a-z_]*' | sort -u"
+        verified: false
+        fails_when: "SKU lacks a feature; virtualization hides CPU flags"
+        source: ark-xeon-696x
+      - name: OS / hardware
+        examples: "Linux kernel, NUMA layout, memory channels"
+        check: "uname -r; lscpu; numactl --hardware"
+        verified: false
+        fails_when: "Unpinned processes across sockets; missing DIMMs"
+        source: kernel-numa
+
+  - id: intel-gpu
+    name: Intel GPU (Arc Pro B-Series, Data Center GPU)
+    device: GPU
+    layers:
+      - name: Serving
+        examples: "vLLM XPU backend (Linux; vllm-xpu-kernels needs Python 3.12)"
+        check: "python -c \"import vllm; print(vllm.__version__)\""
+        verified: false
+        fails_when: "Wrong Python version for vllm-xpu-kernels; feature not yet on XPU backend"
+        source: vllm-gpu-install
+      - name: Framework
+        examples: "Native PyTorch XPU (IPEX is end of life), OpenVINO GPU device"
+        check: "python -c \"import torch; print(torch.xpu.is_available())\""
+        verified: true
+        fails_when: "Prints False: check the Intel GPU driver installation (per PyTorch docs)"
+        source: pytorch-xpu-get-started
+      - name: Runtime
+        examples: "Level Zero (intel-level-zero-gpu), OpenCL (intel-opencl-icd)"
+        check: "clinfo   # installed as a verification tool by Intel's driver guide"
+        verified: true
+        fails_when: "Runtime packages missing or mismatched with the kernel driver"
+        source: intel-gpu-driver-install
+      - name: Permissions
+        examples: "render group access to DRM render nodes"
+        check: "id   # confirm membership of the render group"
+        verified: true
+        fails_when: "Service account not in the render group"
+        source: intel-gpu-driver-install
+      - name: Kernel driver + firmware
+        examples: "Intel GPU kernel driver (package per OS in Intel's guide)"
+        check: "sudo dmesg | grep -i -E 'i915|xe'   # driver name depends on GPU and kernel"
+        verified: false
+        fails_when: "Kernel too old/new for the driver package; firmware missing"
+        source: intel-gpu-driver-install
+
+  - id: gaudi
+    name: Intel Gaudi accelerator
+    device: AI accelerator
+    layers:
+      - name: Serving
+        examples: "vLLM + vllm-gaudi plugin (0.26.0 with Gaudi 1.24.1 / PyTorch 2.11 on check date)"
+        check: "pip list | grep -i vllm"
+        verified: false
+        fails_when: "Plugin and vLLM versions don't match; upstream API changes"
+        source: vllm-gaudi-repo
+      - name: Framework
+        examples: "PyTorch with the Intel Gaudi integration (PyTorch 2.13 for 1.24.2)"
+        check: "pip list | grep -i -E 'torch|habana'"
+        verified: false
+        fails_when: "PyTorch upgraded independently of the Gaudi software release"
+        source: gaudi-support-matrix
+      - name: Container runtime
+        examples: "habanalabs-container-runtime (required for containers, not auto-installed)"
+        check: "Check the package is installed on the host (package manager)"
+        verified: true
+        fails_when: "Container starts but sees no devices"
+        source: gaudi-driver-install
+      - name: Driver + device tools
+        examples: "Installed with habanalabs-installer.sh; hl-smi reports devices"
+        check: "hl-smi"
+        verified: true
+        fails_when: "Driver not loaded; firmware level not matching the release"
+        source: gaudi-driver-install
+      - name: Firmware / OS
+        examples: "SPI firmware per card (see Support Matrix); supported OS list per release"
+        check: "Compare with docs.habana.ai Support Matrix for your release"
+        verified: true
+        fails_when: "OS or firmware not listed for the installed release"
+        source: gaudi-support-matrix
+
+  - id: npu
+    name: Intel NPU (Core Ultra client)
+    device: NPU
+    layers:
+      - name: Application
+        examples: "On-device app using OpenVINO (and OpenVINO GenAI for LLMs)"
+        check: "pip list | grep -i openvino"
+        verified: false
+        fails_when: "Model or shape not supported on the NPU device; no fallback configured"
+        source: openvino-devices
+      - name: Framework / runtime
+        examples: "OpenVINO NPU device plugin"
+        check: "python -c \"import openvino as ov; print(ov.Core().available_devices)\""
+        verified: false
+        fails_when: "NPU missing from available devices: driver not installed or outdated"
+        source: openvino-devices
+      - name: Driver
+        examples: "NPU driver (Windows Device Manager > Neural processors; Linux driver package)"
+        check: "Windows: Device Manager driver version. Linux: see Intel NPU driver docs"
+        verified: false
+        fails_when: "Specific driver versions with known issues (OpenVINO 2026.4.1 notes a Core Ultra Series 3 Windows NPU crash fix)"
+        source: openvino-releases
+      - name: Hardware
+        examples: "NPU inside Core Ultra processors"
+        check: "Task Manager > Performance shows an NPU tile on supported systems"
+        verified: false
+        fails_when: "Device has no NPU"
+        source: intel-core-ultra-s3-vpro

@@ -1,0 +1,135 @@
+# 15-question diagnostic. Three questions per topic. Topic ids match learning-path ids.
+topics:
+  foundations: Foundations
+  intel-judgment: Intel product and software judgment
+  customer-engineering: Customer Engineering execution
+  performance: Performance and system reasoning
+  senior-tpm: Senior technical TPM practice
+
+questions:
+  - topic: foundations
+    question: Which statement about NPUs is most accurate?
+    options:
+      - An NPU is a low-power engine for running trained models, typically on client devices.
+      - An NPU is a data center training accelerator.
+      - An NPU is another name for a GPU.
+      - An NPU stores the model weights.
+    answer: 0
+    explanation: NPUs (for example in Intel Core Ultra) target efficient on-device inference. They have their own driver and software path.
+    lesson: cpu-gpu-npu-accelerator
+  - topic: foundations
+    question: Roughly how much memory do the weights of a 7-billion-parameter model need at BF16?
+    options: [3.5 GB, 7 GB, 14 GB, 28 GB]
+    answer: 2
+    explanation: 7×10⁹ × 2 bytes = 14 GB, before KV cache and overhead.
+    lesson: tensors-precision-quantization
+  - topic: foundations
+    question: In a container, where does the accelerator's kernel driver run?
+    options: [Inside the container image, On the host kernel, In the framework, In the firmware only]
+    answer: 1
+    explanation: Containers share the host kernel, so the kernel driver is installed on the host.
+    lesson: containers-vms
+  - topic: intel-judgment
+    question: A model works on an Intel Arc GPU. What do you know about Intel Gaudi support?
+    options:
+      - It's guaranteed.
+      - Nothing yet; Gaudi has a separate software stack that must be checked.
+      - It can't work.
+      - It works only at INT4.
+    answer: 1
+    explanation: GPU and Gaudi stacks differ. Check the Gaudi support matrix and test.
+    lesson: tracing-software-stack
+  - topic: intel-judgment
+    question: An error names an unimplemented operator; memory use is low. What bucket is this most likely?
+    options: [Hardware limit, Software support gap, Cooling issue, Network bottleneck]
+    answer: 1
+    explanation: The hardware has headroom; the operator isn't implemented for this backend.
+    lesson: hw-limit-vs-sw-gap
+  - topic: intel-judgment
+    question: Which document is the right source for validated OS/driver/framework version combinations?
+    options: [Intel ARK spec page, A support/compatibility matrix, A press release, A benchmark blog]
+    answer: 1
+    explanation: Support matrices list validated combinations; ARK lists hardware specs.
+    lesson: reading-specs-matrices
+  - topic: customer-engineering
+    question: What should happen before performance benchmarking in a POC?
+    options:
+      - Smoke test, functional correctness and accuracy validation.
+      - Nothing.
+      - A press release.
+      - Ordering production hardware.
+    answer: 0
+    explanation: A fast wrong answer is a failed POC; prove correctness first.
+    lesson: install-smoke-correctness
+  - topic: customer-engineering
+    question: What is the best first move on an intermittent customer bug with a confidential model?
+    options:
+      - Reproduce with matching versions and try a public model of the same architecture.
+      - Ask the customer to email their model.
+      - Close the ticket.
+      - Upgrade every package.
+    answer: 0
+    explanation: Matching versions and a public stand-in lead toward a shareable MRE.
+    lesson: repro-minimal-example
+  - topic: customer-engineering
+    question: Which is a measurable POC acceptance criterion?
+    options:
+      - "\"Users should be happy.\""
+      - "\"P95 TTFT ≤ 1.5 s at 64 users, 2,000-token inputs, on the agreed configuration.\""
+      - "\"Faster than before.\""
+      - "\"Production ready.\""
+    answer: 1
+    explanation: It names metric, percentile, threshold, load, inputs and configuration.
+    lesson: escalation-acceptance-handoff
+  - topic: performance
+    question: "E2E latency 3.0 s, TTFT 1.0 s, 41 output tokens. TPOT?"
+    options: [25 ms, 50 ms, 75 ms, 100 ms]
+    answer: 1
+    explanation: (3.0 − 1.0) / 40 = 50 ms.
+    lesson: latency-throughput-metrics
+  - topic: performance
+    question: Why is LLM decode at small batch usually memory-bandwidth-bound?
+    options:
+      - Each token re-reads the weights with little math per byte.
+      - Decode uses the disk.
+      - Decode is done by the CPU only.
+      - It isn't; it is always compute-bound.
+    answer: 0
+    explanation: Low arithmetic intensity makes memory bandwidth the limit.
+    lesson: bottlenecks-utilization-power
+  - topic: performance
+    question: "$10/hour system, 1,000 tokens/s, 100% utilization. Cost per million tokens?"
+    options: [$0.28, $2.78, $10.00, $27.80]
+    answer: 1
+    explanation: 10 ÷ (1,000 × 3,600) × 1,000,000 ≈ $2.78.
+    lesson: quality-cost-tradeoffs
+  - topic: senior-tpm
+    question: Which blocker should usually lead the weekly engineering sync?
+    options:
+      - A reproduced issue blocking an acceptance criterion on the critical path.
+      - The oldest ticket.
+      - A cosmetic issue a VP mentioned.
+      - An unreproduced rumor.
+    answer: 0
+    explanation: Rank by impact and evidence, critical path first.
+    lesson: critical-path-risk-blockers
+  - topic: senior-tpm
+    question: What belongs in the first line of an executive update?
+    options:
+      - The bottom line - status and why.
+      - The full test log.
+      - A list of every meeting.
+      - The org chart.
+    answer: 0
+    explanation: Executives need the status and reason first; details later.
+    lesson: communicating-go-no-go
+  - topic: senior-tpm
+    question: A release candidate passes performance but the rollback plan is untested. Recommendation?
+    options:
+      - Ready, ship it.
+      - Not ready, or go with the condition that rollback is tested first.
+      - Cancel the release.
+      - Ignore the rollback plan.
+    answer: 1
+    explanation: Gates cover more than performance; untested rollback is a real release risk.
+    lesson: release-readiness-reviews

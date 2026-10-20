@@ -1,0 +1,372 @@
+# Branching customer POC scenarios. All companies, people and numbers are fictional.
+# Each choice can add evidence keys and reasoning points. Scoring:
+#   reasoning    = points earned / best possible points on any path
+#   completeness = required evidence collected / required evidence listed
+scenarios:
+  - id: northwind-sizing
+    title: Northwind chatbot sizing
+    customer: Northwind Shops (fictional retailer)
+    skills: [Discovery, Workload qualification, Memory sizing]
+    brief: |
+      Northwind's VP of Digital emails: "We want an AI shopping assistant on Intel. Which accelerator should we buy? We need an answer this week."
+    required_evidence:
+      model: Model family, size and acceptable precision
+      tokens: Input/output token length distribution
+      concurrency: Peak concurrent users and latency target (with percentile)
+      environment: Deployment environment and constraints (OS, containers, power/cooling)
+      decision: Who decides, and what decision the POC informs
+    start: n1
+    nodes:
+      n1:
+        text: You have a 30-minute call with the VP and an engineer tomorrow. What do you do first?
+        choices:
+          - label: Send a product comparison deck and recommend the most powerful option.
+            next: n2_bad
+            points: 0
+            feedback: Recommending hardware before understanding the workload skips discovery. You may be sizing the wrong problem.
+          - label: Send a short discovery questionnaire ahead of the call and use the call to confirm workload, targets and decision process.
+            next: n2
+            evidence: [decision]
+            points: 3
+            feedback: Good. Pre-reads make the call productive and surface the decision owner early.
+          - label: Ask for a loaner request form to be filled so hardware can ship quickly.
+            next: n2_bad
+            points: 0
+            feedback: Shipping hardware without a defined workload often wastes weeks.
+      n2_bad:
+        text: "The VP replies: \"Great, but our engineer says our model may not fit on what you suggested.\" What now?"
+        choices:
+          - label: Step back and run proper discovery on model, tokens, concurrency and environment.
+            next: n2
+            evidence: [decision]
+            points: 1
+            feedback: Recovering is good; starting here would have been faster.
+          - label: Insist the recommended product will work.
+            next: end_poor
+            points: 0
+            feedback: Claims without evidence damage trust.
+      n2:
+        text: "On the call you learn they plan an open 8B-parameter model. Which question do you prioritize next?"
+        choices:
+          - label: "What are typical prompt and answer lengths, and does the assistant add retrieved product data to prompts?"
+            next: n3
+            evidence: [tokens, model]
+            points: 3
+            feedback: Token lengths (especially with RAG) drive prefill, KV memory and latency.
+          - label: "Which color scheme will the assistant use?"
+            next: n3
+            points: 0
+            feedback: Not a sizing input.
+          - label: "Can you share your full customer database?"
+            next: n3
+            points: 0
+            feedback: Not needed for sizing, and raises data-handling concerns. Ask for length statistics or a public stand-in instead.
+      n3:
+        text: The engineer says prompts average ~1,500 tokens with retrieval and answers ~200 tokens. What next?
+        choices:
+          - label: Ask for peak concurrent users and the latency target, including which percentile.
+            next: n4
+            evidence: [concurrency]
+            points: 3
+            feedback: Concurrency and the P95 target define the operating point.
+          - label: Assume 10 users and average latency of 2 seconds.
+            next: n4
+            points: 0
+            feedback: Assumptions without confirmation become disputed results later.
+          - label: Ask which precision they would accept (BF16 vs INT8) and whether accuracy must be re-checked.
+            next: n4
+            evidence: [model]
+            points: 2
+            feedback: Useful, but you still don't know load or latency targets.
+      n4:
+        text: Before proposing candidates, what else do you confirm?
+        choices:
+          - label: "Deployment environment: on-prem Kubernetes vs cloud, OS, rack power and cooling, existing servers."
+            next: end_good
+            evidence: [environment]
+            points: 3
+            feedback: Environment constraints often eliminate options before any benchmark.
+          - label: Nothing, propose the top three products now.
+            next: end_ok
+            points: 1
+            feedback: You may propose options that can't be deployed in their data center.
+    endings:
+      end_good:
+        outcome: You propose two candidate configurations, a sizing estimate (weights + KV at the stated concurrency), and a 3-week POC plan with measurable acceptance criteria.
+      end_ok:
+        outcome: You propose candidates, but the facilities team later rules one out. The POC slips a week.
+      end_poor:
+        outcome: The customer loses confidence and pauses the engagement.
+
+  - id: contoso-loaner
+    title: Contoso loaner readiness
+    customer: Contoso Insurance (fictional)
+    skills: [Hardware readiness, Environment inventory, Support matrix]
+    brief: |
+      Contoso approved a 4-week POC on accelerator servers lent by Intel through an OEM. The account team wants hardware shipped tomorrow.
+    required_evidence:
+      facility: Power, cooling and rack space confirmed for the exact configuration
+      network: Network ports, remote access and firewall rules
+      matrix: Target OS and software release confirmed on the official support matrix
+      access: Admin access, data-handling and security approvals
+      inventory: Baseline environment inventory captured on arrival
+    start: n1
+    nodes:
+      n1:
+        text: What do you check before approving shipment?
+        choices:
+          - label: Confirm in writing with Contoso facilities that racks support the card power (for example 600 W per PCIe card for Gaudi 3 HL-338) and cooling.
+            next: n2
+            evidence: [facility]
+            points: 3
+            feedback: Facility limits are one of the most common, avoidable delays.
+          - label: Ship now; facilities can adjust later.
+            next: n2_late
+            points: 0
+            feedback: Hardware sitting in a loading dock costs POC days.
+      n2_late:
+        text: Hardware arrives; facilities says the rack can't supply enough power for all cards. What do you do?
+        choices:
+          - label: Agree a reduced configuration now, document the impact on the test plan, and confirm facility limits for the rest.
+            next: n2
+            evidence: [facility]
+            points: 1
+            feedback: Good recovery, but results now cover a smaller configuration.
+          - label: Wait until facilities upgrades power.
+            next: end_poor
+            points: 0
+            feedback: Open-ended waiting usually kills the POC timeline.
+      n2:
+        text: The customer wants to use their standard OS image. What next?
+        choices:
+          - label: Check the OS version against the official support matrix for the planned software release.
+            next: n3
+            evidence: [matrix]
+            points: 3
+            feedback: Unsupported OS versions cause driver and runtime failures that look like product bugs.
+          - label: Assume their OS is fine because it's Linux.
+            next: n3
+            points: 0
+            feedback: Support matrices list specific OS versions.
+      n3:
+        text: Engineers need to work on the systems. What do you set up?
+        choices:
+          - label: Remote access path, firewall rules, named admin accounts and agreed data-handling rules (public/synthetic data unless approved).
+            next: n4
+            evidence: [network, access]
+            points: 3
+            feedback: Access and data rules are frequent week-one blockers.
+          - label: Ask Contoso to email passwords to the team.
+            next: n4
+            points: 0
+            feedback: Never share credentials over email; use the customer's approved access process.
+      n4:
+        text: Systems are up. Before the first test, what do you capture?
+        choices:
+          - label: A full environment inventory (hardware, firmware, OS/kernel, driver, runtime, framework, serving engine, container digest).
+            next: end_good
+            evidence: [inventory]
+            points: 3
+            feedback: This is the baseline every later result and issue will be compared against.
+          - label: Start benchmarking immediately.
+            next: end_ok
+            points: 0
+            feedback: Without a baseline inventory, later regressions are hard to explain.
+    endings:
+      end_good:
+        outcome: The POC starts on day one with a supported stack and a baseline inventory.
+      end_ok:
+        outcome: Testing starts, but a later firmware change can't be traced. You lose two days reconstructing versions.
+      end_poor:
+        outcome: The POC is postponed by a month waiting for facility work.
+
+  - id: fabrikam-quantization
+    title: Fabrikam quantization regression
+    customer: Fabrikam Legal (fictional)
+    skills: [Accuracy validation, Fair benchmarking, Communicating tradeoffs]
+    brief: |
+      Fabrikam's engineer reports: "INT8 gives us a big speed-up over BF16. Can we lock that in for the readout next week?"
+    required_evidence:
+      accuracy: Accuracy at INT8 vs BF16 on the agreed evaluation set
+      settings: Matched benchmark settings (lengths, concurrency, warm-up) between runs
+      method: Quantization method and which operators run in lower precision
+      variance: Repeated runs with variance reported
+    start: n1
+    nodes:
+      n1:
+        text: What's your first response?
+        choices:
+          - label: Ask whether the agreed accuracy evaluation was run at INT8 and how it compares to BF16.
+            next: n2
+            evidence: [accuracy]
+            points: 3
+            feedback: Speed only counts if quality passes the agreed bar.
+          - label: Congratulate them and add the number to the readout.
+            next: n2_risky
+            points: 0
+            feedback: Unvalidated numbers in a readout are hard to retract.
+      n2_risky:
+        text: A business user notices worse citation accuracy in a demo. What now?
+        choices:
+          - label: Pull the number from the readout draft and run the accuracy evaluation at both precisions.
+            next: n2
+            evidence: [accuracy]
+            points: 1
+            feedback: Correct, though starting here would have avoided the demo issue.
+          - label: Explain it's probably fine.
+            next: end_poor
+            points: 0
+            feedback: Dismissing quality signals erodes trust.
+      n2:
+        text: INT8 accuracy is 3 points lower than BF16; the agreed tolerance is 1 point. What next?
+        choices:
+          - label: Ask which quantization method was used and which layers were quantized; explore options such as keeping sensitive layers in higher precision.
+            next: n3
+            evidence: [method]
+            points: 3
+            feedback: Method and coverage matter; partial quantization can recover accuracy.
+          - label: Widen the tolerance to 3 points.
+            next: n3
+            points: 0
+            feedback: Changing criteria after seeing results undermines the POC.
+      n3:
+        text: You notice the BF16 run used concurrency 8 and the INT8 run used concurrency 32. What do you do?
+        choices:
+          - label: Re-run both at matched settings (lengths, concurrency, warm-up excluded) with several repetitions.
+            next: end_good
+            evidence: [settings, variance]
+            points: 3
+            feedback: Only matched comparisons tell you the precision effect.
+          - label: Keep the numbers; the speed-up is still real.
+            next: end_ok
+            points: 0
+            feedback: Part of the "speed-up" may be the concurrency difference.
+    endings:
+      end_good:
+        outcome: "Readout presents BF16 as the recommended configuration (passes accuracy), with a mixed-precision option under evaluation. Numbers are matched and include variance."
+      end_ok:
+        outcome: The readout includes an inflated speed-up. A customer engineer spots the mismatch later.
+      end_poor:
+        outcome: The customer questions every result in the readout.
+
+  - id: tailspin-scaling
+    title: Tailspin multi-node scaling
+    customer: Tailspin Research (fictional)
+    skills: [Communication-bound reasoning, Evidence gathering, Escalation]
+    brief: |
+      Tailspin is fine-tuning on 2 servers. One server gives a baseline; two servers give only 1.2x. Their lead says "Intel networking is broken."
+    required_evidence:
+      single: Single-node scaling across devices in one server
+      comm: Time spent in communication vs compute (profile)
+      link: Link speed, RDMA status and switch configuration
+      repro: Reproduction with a reference configuration or public workload
+    start: n1
+    nodes:
+      n1:
+        text: What evidence do you request first?
+        choices:
+          - label: Scaling inside a single server (1 device vs all devices) to separate in-box from network effects.
+            next: n2
+            evidence: [single]
+            points: 3
+            feedback: Isolating scale-up from scale-out narrows the problem quickly.
+          - label: Escalate to networking engineering immediately.
+            next: n2
+            points: 1
+            feedback: Escalation without evidence gets slow responses.
+          - label: Suggest they use a smaller model.
+            next: n2
+            points: 0
+            feedback: Changes the workload without explaining the issue.
+      n2:
+        text: Single-server scaling looks good. Two-server scaling is poor. Next?
+        choices:
+          - label: Ask for a profile showing time in communication vs compute, and link/RDMA status on both servers.
+            next: n3
+            evidence: [comm, link]
+            points: 3
+            feedback: This tests the communication-bound hypothesis directly.
+          - label: Replace the accelerators.
+            next: n3
+            points: 0
+            feedback: Single-server results suggest devices aren't the issue.
+      n3:
+        text: The profile shows most step time in cross-node communication, and one switch port negotiated a lower speed. What now?
+        choices:
+          - label: Ask the customer's network team to fix the port configuration, then re-run; in parallel reproduce with a public workload on a reference cluster.
+            next: end_good
+            evidence: [repro]
+            points: 3
+            feedback: Fix the likely cause and confirm with an independent repro.
+          - label: Write an escalation to product engineering saying the product doesn't scale.
+            next: end_ok
+            points: 0
+            feedback: The evidence points to configuration, not a product limit.
+    endings:
+      end_good:
+        outcome: After the port fix, two-server scaling improves substantially; the reference repro confirms behavior. The issue is closed as configuration.
+      end_ok:
+        outcome: Engineering spends a week investigating a product issue that was a switch setting.
+      end_poor:
+        outcome: The customer concludes Intel networking is broken.
+
+  - id: woodgrove-go-no-go
+    title: Woodgrove go/no-go readout
+    customer: Woodgrove Health (fictional)
+    skills: [Acceptance criteria, Risk, Executive communication]
+    brief: |
+      The POC ends Friday. Latency and accuracy criteria pass. The 72-hour soak test had one crash; a fix exists but hasn't been soak-tested. The sales lead wants a clean "Go."
+    required_evidence:
+      criteria: Each acceptance criterion with pass/fail and evidence link
+      soak: Crash details, fix status and re-test plan
+      confidence: Labels on which numbers are measured vs estimated
+      conditions: Explicit conditions and fallback if recommending conditional go
+    start: n1
+    nodes:
+      n1:
+        text: How do you prepare the readout?
+        choices:
+          - label: Build a table of every acceptance criterion with result, evidence and confidence (measured vs estimated).
+            next: n2
+            evidence: [criteria, confidence]
+            points: 3
+            feedback: The table makes the recommendation verifiable.
+          - label: Lead with the best performance chart.
+            next: n2
+            points: 0
+            feedback: A highlight reel hides the soak failure.
+      n2:
+        text: How do you handle the soak test crash?
+        choices:
+          - label: Report it plainly with root cause, fix status, and a plan to re-run the 72-hour soak on the fixed build.
+            next: n3
+            evidence: [soak]
+            points: 3
+            feedback: Honest reporting with a plan preserves trust.
+          - label: Leave it out since a fix exists.
+            next: end_poor
+            points: 0
+            feedback: Omitting a failed gate is a serious credibility risk.
+      n3:
+        text: What do you recommend?
+        choices:
+          - label: "Go with conditions: production launch after the fixed build passes a 72-hour soak; fallback plan named."
+            next: end_good
+            evidence: [conditions]
+            points: 3
+            feedback: Clear, evidence-based and actionable.
+          - label: "Unconditional Go."
+            next: end_ok
+            points: 0
+            feedback: A failed gate without re-test makes an unconditional go risky.
+          - label: "No-go."
+            next: end_ok
+            points: 1
+            feedback: Defensible, but ignores that the fix has a clear path; conditional go fits the evidence better.
+    endings:
+      end_good:
+        outcome: The customer accepts a conditional go. The re-run passes the following week and the handoff proceeds.
+      end_ok:
+        outcome: The decision is made, but stakeholders later question how the soak failure was weighed.
+      end_poor:
+        outcome: The crash recurs in production pilot; the customer asks why it wasn't disclosed.

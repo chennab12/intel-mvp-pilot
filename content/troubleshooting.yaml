@@ -1,0 +1,128 @@
+# Troubleshooting Clinic cases. All systems, outputs and companies are fictional.
+# Observations are ILLUSTRATIVE (written for teaching), never real command output.
+# action.kind: evidence (gathers information) | premature (a fix tried before evidence)
+# action.key: true if this evidence is needed to justify the correct diagnosis.
+cases:
+  - id: driver-runtime-mismatch
+    title: Driver/runtime mismatch after an upgrade
+    platform: Intel Gaudi server (fictional customer system)
+    symptom: After the customer's IT team upgraded packages, training fails at startup with an initialization error. It worked last week.
+    actions:
+      - {id: inventory, kind: evidence, key: true, label: "Collect current versions of driver, firmware, Gaudi software and PyTorch", observation: "Gaudi software packages show one release; the PyTorch package was upgraded separately to a newer version than that release lists."}
+      - {id: matrix, kind: evidence, key: true, label: "Compare versions against the official Gaudi Support Matrix", observation: "The installed PyTorch version is not the one listed for the installed Gaudi software release."}
+      - {id: lastgood, kind: evidence, key: false, label: "Diff against last week's environment inventory", observation: "Only the PyTorch package and two Python libraries changed."}
+      - {id: dmesg, kind: evidence, key: false, label: "Check dmesg for driver errors", observation: "Driver loaded normally; no device errors."}
+      - {id: reinstall, kind: premature, label: "Reinstall the OS", observation: "Two days lost; the same package versions are reinstalled from the customer's automation, and the error returns."}
+    diagnoses:
+      - {label: "Framework version doesn't match the installed Gaudi software release", correct: true}
+      - {label: "Faulty accelerator hardware", correct: false}
+      - {label: "Model bug", correct: false}
+    resolution: Align PyTorch (and related packages) to the versions listed for the installed Gaudi release, or upgrade the whole stack together. Pin versions in the customer's automation.
+    lesson: software-layers
+    sources: [gaudi-support-matrix]
+
+  - id: accelerator-not-detected
+    title: Intel GPU not detected by the application
+    platform: Linux server with an Intel Arc Pro GPU (fictional)
+    symptom: "The customer's service logs \"no XPU device found\". The admin says the card is installed."
+    actions:
+      - {id: lspci, kind: evidence, key: false, label: "Check the card is visible on PCIe (lspci)", observation: "The GPU appears in the PCIe device list."}
+      - {id: frameworkcheck, kind: evidence, key: true, label: "Run torch.xpu.is_available() as the admin user and as the service user", observation: "Admin user prints True. Service user prints False."}
+      - {id: groups, kind: evidence, key: true, label: "Check the service user's groups (id) and render node permissions", observation: "The service user isn't in the render group."}
+      - {id: driver, kind: evidence, key: false, label: "Check the driver is loaded (dmesg)", observation: "Driver loaded; no errors."}
+      - {id: newcard, kind: premature, label: "Request a replacement card", observation: "Replacement takes a week and behaves the same way."}
+    diagnoses:
+      - {label: "Service user lacks render-group access to the GPU", correct: true}
+      - {label: "Card is dead", correct: false}
+      - {label: "PCIe slot is too slow", correct: false}
+    resolution: Add the service user to the render group (per Intel's driver docs), restart the service, and add the check to the deployment runbook.
+    lesson: linux-basics
+    sources: [intel-gpu-driver-install, pytorch-xpu-get-started]
+
+  - id: out-of-memory
+    title: Out-of-memory at higher concurrency
+    platform: Single accelerator serving an 8B model (fictional)
+    symptom: Serving works for a few users and fails with out-of-memory errors when load testing reaches 40 concurrent users.
+    actions:
+      - {id: config, kind: evidence, key: true, label: "Get serving config: max context length, max concurrent sequences, precision", observation: "Max context 16,384 tokens; max sequences 64; BF16 weights and KV."}
+      - {id: kvcalc, kind: evidence, key: true, label: "Estimate KV cache with the calculator (32 layers, 8 KV heads, head dim 128)", observation: "128 KiB per token; 40 sequences x 16K tokens = 80 GiB of KV at full length. That exceeds device memory after weights."}
+      - {id: memlog, kind: evidence, key: false, label: "Look at device memory use over the test", observation: "Memory climbs as conversations get longer until allocation fails."}
+      - {id: biggerbatch, kind: premature, label: "Increase batch size to improve efficiency", observation: "Fails sooner."}
+    diagnoses:
+      - {label: "KV cache for the configured context x concurrency exceeds device memory", correct: true}
+      - {label: "Model weights are too large", correct: false}
+      - {label: "Memory leak in the driver", correct: false}
+    resolution: Lower max context and/or max concurrent sequences to a budget that fits, consider KV-cache quantization if supported on the stack, or add devices. Re-run load test at the new limits.
+    lesson: memory-budget-kv
+    sources: [arxiv-pagedattention]
+
+  - id: slow-inference
+    title: Slow inference on Xeon
+    platform: Two-socket Xeon server running CPU inference (fictional)
+    symptom: The customer measures about half the throughput Intel's engineer measured on a similar server.
+    actions:
+      - {id: lscpu, kind: evidence, key: true, label: "Compare lscpu / NUMA layout and thread settings on both systems", observation: "Customer process uses all cores across both sockets as one instance; Intel's run used one instance per socket pinned to local memory."}
+      - {id: dimms, kind: evidence, key: true, label: "Check memory population (channels filled)", observation: "Customer server has half the memory channels populated."}
+      - {id: versions, kind: evidence, key: false, label: "Compare framework versions", observation: "Same framework version on both."}
+      - {id: warm, kind: evidence, key: false, label: "Check whether warm-up was excluded", observation: "Both excluded warm-up."}
+      - {id: gpu, kind: premature, label: "Tell the customer CPUs are too slow and they need accelerators", observation: "The customer is confused because Intel's own result was twice as fast on similar hardware."}
+    diagnoses:
+      - {label: "Configuration differences: NUMA binding/instance layout and memory channel population", correct: true}
+      - {label: "Xeon cannot run this workload", correct: false}
+      - {label: "Model accuracy problem", correct: false}
+    resolution: Populate all memory channels if possible, run pinned instances per socket/NUMA node, and re-measure with identical settings. Record both in the benchmark template.
+    lesson: cores-sockets-numa
+    sources: [ark-xeon-696x, kernel-numa]
+
+  - id: quantization-regression
+    title: Accuracy regression after quantization
+    platform: Accelerator inference with INT8 weights (fictional)
+    symptom: After switching to INT8, the customer's quality score drops below the agreed threshold.
+    actions:
+      - {id: eval, kind: evidence, key: true, label: "Run the agreed evaluation at BF16 and INT8 on identical data", observation: "BF16 meets the threshold; INT8 is 3 points lower."}
+      - {id: method, kind: evidence, key: true, label: "Check the quantization method and which layers were quantized", observation: "All linear layers quantized with a simple per-tensor scale."}
+      - {id: perlayer, kind: evidence, key: false, label: "Measure per-layer error on a sample", observation: "A few layers show much larger error than others."}
+      - {id: widen, kind: premature, label: "Lower the acceptance threshold", observation: "The customer's business owner rejects the change."}
+    diagnoses:
+      - {label: "Quantization method/coverage causes too much error in sensitive layers", correct: true}
+      - {label: "Hardware calculates wrong results", correct: false}
+      - {label: "Network latency", correct: false}
+    resolution: Try finer-grained scales or keep sensitive layers in higher precision, using methods supported by the stack. Re-run the evaluation; keep BF16 as the recommended config until INT8 passes.
+    lesson: tensors-precision-quantization
+    sources: [academy-original]
+
+  - id: network-bottleneck
+    title: Network bottleneck in multi-node training
+    platform: Two Gaudi servers connected by Ethernet (fictional)
+    symptom: Two servers train only 1.2x faster than one.
+    actions:
+      - {id: single, kind: evidence, key: true, label: "Measure scaling within one server", observation: "Good scaling across devices inside one server."}
+      - {id: profile, kind: evidence, key: true, label: "Profile time in communication vs compute", observation: "Cross-node communication dominates step time."}
+      - {id: ports, kind: evidence, key: true, label: "Check link speeds and RDMA status on both servers and the switch", observation: "One port negotiated a lower speed; RDMA is enabled."}
+      - {id: model, kind: evidence, key: false, label: "Check model size", observation: "Unchanged from single-node runs."}
+      - {id: escalate, kind: premature, label: "Escalate that the product doesn't scale", observation: "Engineering asks for profiles and link status before engaging."}
+    diagnoses:
+      - {label: "Network link misconfiguration makes the job communication-bound", correct: true}
+      - {label: "Accelerators are defective", correct: false}
+      - {label: "Model is too small", correct: false}
+    resolution: Fix the port configuration with the customer's network team, re-run, and keep link-status checks in the POC readiness checklist.
+    lesson: interconnects-scale
+    sources: [gaudi3-oam-brief]
+
+  - id: unsupported-operator
+    title: Unsupported model/operator
+    platform: New open model on an Intel accelerator stack (fictional)
+    symptom: Model load fails with an error that names an operator not implemented for the backend.
+    actions:
+      - {id: error, kind: evidence, key: true, label: "Read the full error and identify the operator and precision", observation: "A custom attention operator at a specific precision is reported as not implemented for this device."}
+      - {id: matrix, kind: evidence, key: true, label: "Check release notes / supported model list for this stack version", observation: "The model family isn't listed for the installed release; a newer release note mentions related work."}
+      - {id: mem, kind: evidence, key: false, label: "Check memory headroom", observation: "Plenty of free device memory."}
+      - {id: ref, kind: evidence, key: false, label: "Try the model with the standard attention implementation option", observation: "Loads and runs a smoke test; accuracy still needs checking."}
+      - {id: buy, kind: premature, label: "Recommend a different accelerator", observation: "The customer asks why, since memory and compute were fine."}
+    diagnoses:
+      - {label: "Software support gap (operator not implemented on this backend/version)", correct: true}
+      - {label: "Hardware limit", correct: false}
+      - {label: "Permission problem", correct: false}
+    resolution: Use a supported implementation if accuracy passes, evaluate the newer release, and file a feature request with business impact. Track it as a dependency.
+    lesson: hw-limit-vs-sw-gap
+    sources: [vllm-gaudi-repo, vllm-gpu-install]
